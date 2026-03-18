@@ -9,6 +9,7 @@ import { Bottom } from "./Bottom";
 import { RoomQRCode } from "./CopyRoom";
 import { GlobalVolumeControl } from "./GlobalVolumeControl";
 import { LowPassControl } from "./LowPassControl";
+import { DemoLyrics } from "./DemoLyrics";
 import { MetronomeButton } from "./Metronome";
 
 const AUDIO_LOADING_RGB = WS_STATUS_COLORS.connecting;
@@ -80,6 +81,7 @@ export const DemoDashboard = ({ roomId }: DemoDashboardProps) => {
   const demoUserCount = useGlobalStore((state) => state.demoUserCount);
   const demoAudioReadyCount = useGlobalStore((state) => state.demoAudioReadyCount);
   const isAdmin = useGlobalStore((state) => state.currentUser?.isAdmin ?? false);
+  const isPlaying = useGlobalStore((state) => state.isPlaying);
   const isAudioLoaded = useGlobalStore(
     (state) => state.audioSources.length > 0 && state.audioSources.every((s) => s.status === "loaded")
   );
@@ -100,40 +102,43 @@ export const DemoDashboard = ({ roomId }: DemoDashboardProps) => {
           animate={{ opacity: 1 }}
           transition={{ duration: 0.5 }}
         >
-          {/* Main content: user count */}
           <div className="flex-1 flex items-center justify-center">
-            <div className="flex flex-col items-center gap-4">
-              <div className="flex items-center gap-3 text-neutral-400">
-                <AudioDot isLoaded={isAudioLoaded} />
-                <span
-                  className={cn(
-                    "text-sm font-medium tracking-wide uppercase transition-colors duration-500",
-                    isAudioLoaded ? "text-neutral-400" : "animate-pulse text-yellow-400"
-                  )}
-                >
-                  {isAudioLoaded ? "Audio Loaded" : "Loading Audio"}
-                </span>
-                {isAdmin && (
-                  <span className="text-sm font-mono text-neutral-300 tabular-nums">
-                    {demoAudioReadyCount}/{demoUserCount}
+            {isPlaying ? (
+              <DemoLyrics />
+            ) : (
+              <div className="flex flex-col items-center gap-4">
+                <div className="flex items-center gap-3 text-neutral-400">
+                  <AudioDot isLoaded={isAudioLoaded} />
+                  <span
+                    className={cn(
+                      "text-sm font-medium tracking-wide uppercase transition-colors duration-500",
+                      isAudioLoaded ? "text-neutral-400" : "animate-pulse text-yellow-400"
+                    )}
+                  >
+                    {isAudioLoaded ? "Audio Loaded" : "Loading Audio"}
                   </span>
-                )}
+                  {isAdmin && (
+                    <span className="text-sm font-mono text-neutral-300 tabular-nums">
+                      {demoAudioReadyCount}/{demoUserCount}
+                    </span>
+                  )}
+                </div>
+                <AnimatePresence mode="popLayout">
+                  <motion.span
+                    key={demoUserCount}
+                    className="text-8xl md:text-9xl font-bold tabular-nums tracking-tight"
+                    initial={{ opacity: 0, y: 20, filter: "blur(4px)" }}
+                    animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                    exit={{ opacity: 0, y: -20, filter: "blur(4px)" }}
+                    transition={{ duration: 0.3, ease: "easeOut" }}
+                  >
+                    {demoUserCount}
+                  </motion.span>
+                </AnimatePresence>
+                <RoomQRCode />
+                <BeatPill />
               </div>
-              <AnimatePresence mode="popLayout">
-                <motion.span
-                  key={demoUserCount}
-                  className="text-8xl md:text-9xl font-bold tabular-nums tracking-tight"
-                  initial={{ opacity: 0, y: 20, filter: "blur(4px)" }}
-                  animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                  exit={{ opacity: 0, y: -20, filter: "blur(4px)" }}
-                  transition={{ duration: 0.3, ease: "easeOut" }}
-                >
-                  {demoUserCount}
-                </motion.span>
-              </AnimatePresence>
-              <RoomQRCode />
-              <BeatPill />
-            </div>
+            )}
           </div>
 
           {isAdmin && (
