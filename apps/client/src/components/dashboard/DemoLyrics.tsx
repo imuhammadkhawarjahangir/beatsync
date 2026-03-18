@@ -65,9 +65,11 @@ export const DemoLyrics = () => {
           exit={{ opacity: 0, y: -40 }}
           transition={{ duration: 0.3, ease: "easeOut" }}
         >
-          <p className="text-3xl md:text-5xl font-bold tracking-tight leading-snug text-white">{current.text}</p>
+          <p className="text-3xl md:text-5xl font-bold tracking-tight leading-snug text-white whitespace-pre-line">
+            {current.text}
+          </p>
           {next && (
-            <p className="text-2xl md:text-4xl font-medium tracking-tight leading-snug text-neutral-500 opacity-55">
+            <p className="text-2xl md:text-4xl font-medium tracking-tight leading-snug text-neutral-500 opacity-55 whitespace-pre-line">
               {next.text}
             </p>
           )}

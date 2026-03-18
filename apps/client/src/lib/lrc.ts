@@ -15,7 +15,7 @@ export function parseLrc(raw: string): LrcLine[] {
     const minutes = parseInt(match[1], 10);
     const seconds = parseInt(match[2], 10);
     const centiseconds = parseInt(match[3], 10);
-    const text = match[4].trim();
+    const text = match[4].trim().replaceAll("\\n", "\n");
     if (!text) continue;
 
     const time = minutes * 60 + seconds + centiseconds / 100;
