@@ -68,7 +68,7 @@ export const DemoLyrics = () => {
           <p className="text-3xl md:text-5xl font-bold tracking-tight leading-snug text-white whitespace-pre-line">
             {current.text}
           </p>
-          {next && (
+          {next && currentIdx > 0 && (
             <p className="text-2xl md:text-4xl font-medium tracking-tight leading-snug text-neutral-500 opacity-55 whitespace-pre-line">
               {next.text}
             </p>
