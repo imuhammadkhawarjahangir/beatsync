@@ -2,7 +2,7 @@ import { networkInterfaces } from "os";
 import { config } from "dotenv";
 import { resolve } from "path";
 
-config({ path: resolve(import.meta.dirname, "../apps/server/.env") });
+config({ path: resolve(import.meta.dirname, "../.env") });
 
 const adminSecret = process.env.DEMO_ADMIN_SECRET ?? "beatsync";
 

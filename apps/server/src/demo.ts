@@ -1,3 +1,4 @@
+import "@/env";
 import { readFileSync, readdirSync } from "fs";
 import { resolve } from "path";
 

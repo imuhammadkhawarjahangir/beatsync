@@ -3,6 +3,9 @@
 # Add .turbo to your .gitignore file. The turbo CLI uses these folders for persisting logs, outputs, and other functionality.
 .turbo
 node_modules
+.env
+.env.*
+!.env.example
 
 # uploads in server
 apps/server/uploads/*

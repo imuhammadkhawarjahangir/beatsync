@@ -1,3 +1,4 @@
+import "@/env";
 import {
   DeleteObjectCommand,
   DeleteObjectsCommand,
@@ -9,12 +10,9 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { R2_AUDIO_FILE_NAME_DELIMITER } from "@beatsync/shared";
-import { config } from "dotenv";
 import { mkdir, readdir, rm, stat } from "node:fs/promises";
 import { dirname, relative, resolve, sep } from "node:path";
 import sanitize from "sanitize-filename";
-
-config();
 
 const STORAGE_MODE = process.env.STORAGE_MODE === "local" ? "local" : "s3";
 const LOCAL_STORAGE_ROOT = resolve(process.env.LOCAL_STORAGE_PATH ?? "./data");
