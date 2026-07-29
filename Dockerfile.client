@@ -8,15 +8,16 @@ COPY apps/server/package.json ./apps/server/package.json
 COPY packages/shared/package.json ./packages/shared/package.json
 RUN bun install --frozen-lockfile --ignore-scripts
 
-# Stage 2: Build public client configuration into the Next.js bundle.
-FROM deps AS build
+# Stage 2: Build with Node to avoid Bun runtime crashes during Next.js compilation.
+FROM node:22-slim AS build
 WORKDIR /app
 
+COPY --from=deps /app /app
 COPY apps/client ./apps/client
 COPY packages/shared ./packages/shared
 
-ARG NEXT_PUBLIC_API_URL=http://localhost:8080
-ARG NEXT_PUBLIC_WS_URL=ws://localhost:8080/ws
+ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_WS_URL
 ARG NEXT_ALLOWED_DEV_ORIGINS
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
@@ -24,7 +25,7 @@ ENV NEXT_ALLOWED_DEV_ORIGINS=$NEXT_ALLOWED_DEV_ORIGINS
 ENV NEXT_TELEMETRY_DISABLED=1
 
 WORKDIR /app/apps/client
-RUN bun run build
+RUN node /app/node_modules/next/dist/bin/next build
 
 # Stage 3: Run only the files traced into Next.js standalone output.
 FROM node:22-slim AS runner
