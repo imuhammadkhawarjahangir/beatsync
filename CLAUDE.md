@@ -112,21 +112,27 @@ Grid-based positioning system where clients are placed on a grid. A "listening s
 
 ## Environment Setup
 
-Copy `apps/client/.env.example` to `apps/client/.env`:
+Copy the root example once:
+
 ```
-NETWORK=localhost
-NEXT_PUBLIC_API_URL="http://${NETWORK}:8080"
-NEXT_PUBLIC_WS_URL="ws://${NETWORK}:8080/ws"
+cp .env.example .env
 ```
 
-Copy `apps/server/.env.example` to `apps/server/.env`. Local storage is the default and requires no S3 credentials:
+The root `.env` is loaded by both apps. App-level `.env*` files are rejected to prevent configuration conflicts.
+Client endpoints and the default local-storage configuration are:
+
 ```
+NEXT_PUBLIC_API_URL=http://localhost:8080
+NEXT_PUBLIC_WS_URL=ws://localhost:8080/ws
+NEXT_ALLOWED_DEV_ORIGINS=local.beatsync.gg,10.0.0.*,192.168.100.*
+CORS_ALLOWED_ORIGINS=http://localhost:3000
 STORAGE_MODE=local
 LOCAL_STORAGE_PATH=./data
 LOCAL_PUBLIC_URL=http://localhost:8080
 ```
 
 For R2/S3-compatible storage:
+
 ```
 STORAGE_MODE=s3
 S3_BUCKET_NAME=
@@ -136,8 +142,10 @@ S3_ACCESS_KEY_ID=
 S3_SECRET_ACCESS_KEY=
 ```
 
-For LAN access, set `NETWORK` and `LOCAL_PUBLIC_URL` to the host computer's LAN IP. Runtime files under
-`LOCAL_STORAGE_PATH` must be kept on persistent storage in disposable deployments.
+For LAN access, replace `localhost` in `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_WS_URL`, and `LOCAL_PUBLIC_URL` with the
+host computer's LAN IP, include its host pattern in `NEXT_ALLOWED_DEV_ORIGINS`, and add its exact client origin to
+`CORS_ALLOWED_ORIGINS`. Both allowlists are comma-separated. Runtime files under `LOCAL_STORAGE_PATH` must be kept on
+persistent storage in disposable deployments.
 
 ## Deployment
 

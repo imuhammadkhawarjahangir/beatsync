@@ -2,22 +2,25 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
-Create the client environment file:
+From the repository root, create the shared environment file:
 
 ```bash
 cp .env.example .env
 ```
 
-The example configures the backend endpoints through a shared host:
+The root `.env` is the single source of truth for both the client and server. Do not create an app-level `.env*`
+file; the client rejects legacy files to prevent conflicting configuration. Its client endpoint defaults are:
 
 ```env
-NETWORK=localhost
-NEXT_PUBLIC_API_URL="http://${NETWORK}:8080"
-NEXT_PUBLIC_WS_URL="ws://${NETWORK}:8080/ws"
+NEXT_PUBLIC_API_URL=http://localhost:8080
+NEXT_PUBLIC_WS_URL=ws://localhost:8080/ws
+NEXT_ALLOWED_DEV_ORIGINS=local.beatsync.gg,10.0.0.*,192.168.100.*
+CORS_ALLOWED_ORIGINS=http://localhost:3000
 ```
 
-Set `NETWORK` to the backend computer's LAN IP when opening the client from another device. Then run the development
-server:
+Replace `localhost` with the backend computer's LAN IP when opening the client from another device. Add any
+additional Next.js development host patterns to `NEXT_ALLOWED_DEV_ORIGINS`, and add each exact browser origin to
+`CORS_ALLOWED_ORIGINS`. Both values are comma-separated. Then run the development server:
 
 ```bash
 npm run dev

@@ -65,11 +65,13 @@ Client ← R2 Public CDN (direct audio access)
 ### Configuration Requirements
 
 ```bash
-# Required environment variables in apps/server/.env
-CLOUDFLARE_ACCOUNT_ID=your_cloudflare_account_id
-CLOUDFLARE_R2_ACCESS_KEY_ID=your_r2_access_key_id
-CLOUDFLARE_R2_SECRET_ACCESS_KEY=your_r2_secret_access_key
-CLOUDFLARE_R2_BUCKET_NAME=beatsync-audio
+# Required in the root .env when STORAGE_MODE=s3
+STORAGE_MODE=s3
+S3_BUCKET_NAME=beatsync-audio
+S3_PUBLIC_URL=https://public-bucket.example.com
+S3_ENDPOINT=https://account-id.r2.cloudflarestorage.com
+S3_ACCESS_KEY_ID=your_access_key_id
+S3_SECRET_ACCESS_KEY=your_secret_access_key
 ```
 
 ### R2 Bucket Structure

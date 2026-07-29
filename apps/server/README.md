@@ -3,22 +3,28 @@ To install dependencies:
 bun install
 ```
 
-Create the server environment file:
+From the repository root, create the shared environment file:
 
 ```sh
 cp .env.example .env
 ```
 
-Local filesystem storage is enabled by default:
+The root `.env` is loaded by both the client and server. Do not create an app-level `.env*` file; the server rejects
+legacy files to prevent conflicting configuration. Local filesystem storage is enabled by default:
 
 ```env
 STORAGE_MODE=local
 LOCAL_STORAGE_PATH=./data
 LOCAL_PUBLIC_URL=http://localhost:8080
+CORS_ALLOWED_ORIGINS=http://localhost:3000
 ```
 
 This stores uploaded audio and room-state backups under `apps/server/data` when the server is run from this
 workspace. For LAN access, set `LOCAL_PUBLIC_URL` to `http://SERVER_LAN_IP:8080`.
+
+`CORS_ALLOWED_ORIGINS` is a comma-separated list of exact browser origins permitted to call the HTTP API and open
+WebSocket connections. Use `*` only when intentionally allowing every origin. In S3/R2 mode, the object-storage
+bucket needs its own matching CORS policy because those audio requests do not pass through this server.
 
 To use R2 or another S3-compatible service, set `STORAGE_MODE=s3` and configure `S3_BUCKET_NAME`, `S3_PUBLIC_URL`,
 `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, and `S3_SECRET_ACCESS_KEY`.
