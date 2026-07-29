@@ -3,6 +3,14 @@ node_modules
 .next
 .turbo
 dist
+**/node_modules
+**/.next
+**/.turbo
+**/dist
+**/*.tsbuildinfo
 *.md
 .env*
+**/.env*
 apps/client/public/*.mp3
+apps/server/data
+apps/server/uploads
