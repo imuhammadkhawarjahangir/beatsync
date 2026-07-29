@@ -15,6 +15,10 @@ services:
     init: true
     ports:
       - "8080:8080"
+    volumes:
+      - type: volume
+        source: server-data
+        target: /app/apps/server/data
     restart: unless-stopped
     stop_grace_period: 15s
     healthcheck:
@@ -65,3 +69,6 @@ services:
       timeout: 3s
       retries: 12
       start_period: 10s
+
+volumes:
+  server-data:
