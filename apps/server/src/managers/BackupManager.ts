@@ -1,4 +1,5 @@
 import pLimit from "p-limit";
+import { isYouTubeSource } from "@beatsync/shared";
 import {
   cleanupOrphanedRooms,
   deleteObject,
@@ -35,7 +36,9 @@ export class BackupManager {
       const room = globalManager.getOrCreateRoom(roomId);
 
       // Concurrently validate all audio sources in R2 (no limit on concurrency)
-      const validationPromises = roomData.audioSources.map((source) => validateAudioFileExists(source.url));
+      const validationPromises = roomData.audioSources.map((source) =>
+        isYouTubeSource(source) ? Promise.resolve(true) : validateAudioFileExists(source.url)
+      );
       const validationResults = await Promise.all(validationPromises);
 
       // Filter out audio sources that are not valid

@@ -1,17 +1,19 @@
 // Tests handleMessage: JSON parsing, Zod validation, NTP t1 stamping,
 // dispatch to handlers, and error handling for malformed messages.
 
-import type { WSBroadcastType } from "@beatsync/shared";
+import type { WSBroadcastType, WSUnicastType } from "@beatsync/shared";
 import { beforeEach, describe, expect, it, mock } from "bun:test";
+import type { ServerWebSocket } from "bun";
 import { mockR2 } from "@/__tests__/mocks/r2";
 import { createMockServer, createMockWs } from "@/__tests__/mocks/websocket";
 import { handleMessage, handleOpen } from "@/routes/websocketHandlers";
 import { globalManager } from "@/managers/GlobalManager";
-import type { BunServer } from "@/utils/websocket";
+import type { BunServer, WSData } from "@/utils/websocket";
 
 let broadcastMessages: { server: BunServer; roomId: string; message: WSBroadcastType }[] = [];
+const deleteObject = mock(() => undefined);
 
-mockR2();
+mockR2({ deleteObject });
 
 void mock.module("@/utils/responses", () => ({
   sendBroadcast: mock(
@@ -19,9 +21,9 @@ void mock.module("@/utils/responses", () => ({
       broadcastMessages.push({ server, roomId, message });
     }
   ),
-  sendUnicast: mock(() => {
-    /* noop */
-  }),
+  sendUnicast: mock(({ ws, message }: { ws: ServerWebSocket<WSData>; message: WSUnicastType }) =>
+    ws.send(JSON.stringify(message))
+  ),
   corsHeaders: {},
   jsonResponse: mock(() => new Response()),
   errorResponse: mock(() => new Response()),
@@ -35,6 +37,7 @@ describe("handleMessage", () => {
 
   beforeEach(() => {
     broadcastMessages = [];
+    deleteObject.mockClear();
     server = createMockServer();
     for (const id of globalManager.getRoomIds()) {
       globalManager.deleteRoom(id);
@@ -93,5 +96,93 @@ describe("handleMessage", () => {
 
     // Playback state should be paused
     expect(room.getPlaybackState().type).toBe("paused");
+  });
+
+  it("should add and deduplicate a canonical YouTube source", async () => {
+    const ws = createMockWs({ clientId: "client-1", roomId: ROOM_ID });
+    handleOpen(ws, server);
+    broadcastMessages = [];
+
+    await handleMessage(
+      ws,
+      JSON.stringify({
+        type: "ADD_YOUTUBE_SOURCE",
+        url: "https://youtu.be/dQw4w9WgXcQ?t=15",
+      }),
+      server
+    );
+
+    const room = globalManager.getRoom(ROOM_ID)!;
+    expect(room.getAudioSources()).toEqual([
+      {
+        sourceType: "youtube",
+        videoId: "dQw4w9WgXcQ",
+        url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      },
+    ]);
+    expect(
+      broadcastMessages.some(
+        (entry) => entry.message.type === "ROOM_EVENT" && entry.message.event.type === "SET_AUDIO_SOURCES"
+      )
+    ).toBe(true);
+
+    await handleMessage(
+      ws,
+      JSON.stringify({
+        type: "ADD_YOUTUBE_SOURCE",
+        url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      }),
+      server
+    );
+    expect(room.getAudioSources()).toHaveLength(1);
+  });
+
+  it("should reject YouTube additions from clients without playback permission", async () => {
+    const adminWs = createMockWs({ clientId: "admin", roomId: ROOM_ID });
+    const guestWs = createMockWs({ clientId: "guest", roomId: ROOM_ID });
+    handleOpen(adminWs, server);
+    handleOpen(guestWs, server);
+
+    await handleMessage(
+      guestWs,
+      JSON.stringify({
+        type: "ADD_YOUTUBE_SOURCE",
+        url: "https://youtu.be/dQw4w9WgXcQ",
+      }),
+      server
+    );
+
+    expect(globalManager.getRoom(ROOM_ID)?.getAudioSources()).toHaveLength(0);
+    expect(
+      broadcastMessages.some(
+        (entry) => entry.message.type === "ROOM_EVENT" && entry.message.event.type === "SET_AUDIO_SOURCES"
+      )
+    ).toBe(false);
+    const sendCalls = (guestWs.send as ReturnType<typeof mock>).mock.calls;
+    const lastMessage = JSON.parse(String(sendCalls[sendCalls.length - 1][0])) as { type: string };
+    expect(lastMessage.type).toBe("ERROR");
+  });
+
+  it("should remove a YouTube source without deleting object storage", async () => {
+    const ws = createMockWs({ clientId: "client-1", roomId: ROOM_ID });
+    handleOpen(ws, server);
+    const room = globalManager.getRoom(ROOM_ID)!;
+    room.addAudioSource({
+      sourceType: "youtube",
+      videoId: "dQw4w9WgXcQ",
+      url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    });
+
+    await handleMessage(
+      ws,
+      JSON.stringify({
+        type: "DELETE_AUDIO_SOURCES",
+        urls: ["https://www.youtube.com/watch?v=dQw4w9WgXcQ"],
+      }),
+      server
+    );
+
+    expect(room.getAudioSources()).toHaveLength(0);
+    expect(deleteObject).not.toHaveBeenCalled();
   });
 });

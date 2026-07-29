@@ -32,6 +32,15 @@ void mock.module("@/utils/responses", () => ({
 
 const ROOM_ID = "test-room";
 const AUDIO_URL = "https://example.com/song.mp3";
+const YOUTUBE_URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+
+const addYouTubeSource = (room: RoomManager) => {
+  room.addAudioSource({
+    sourceType: "youtube",
+    videoId: "dQw4w9WgXcQ",
+    url: YOUTUBE_URL,
+  });
+};
 
 function createPlayAction(opts: { audioSource?: string; trackTimeSeconds?: number } = {}): PlayActionType {
   return {
@@ -96,6 +105,7 @@ describe("Audio Loading Coordination", () => {
         throw new Error("Expected LOAD_AUDIO_SOURCE");
       }
       expect(msg.event.audioSourceToPlay.url).toBe(AUDIO_URL);
+      expect(msg.event.trackTimeSeconds).toBe(0);
     });
 
     it("should bail when audio source does not exist in room", () => {
@@ -159,6 +169,37 @@ describe("Audio Loading Coordination", () => {
   });
 
   describe("processClientLoadedAudioSource", () => {
+    it("ignores stale acknowledgements and waits for every client when loading YouTube", () => {
+      addYouTubeSource(room);
+      addClientsToRoom(room, 4);
+
+      room.initiateAudioSourceLoad(createPlayAction({ audioSource: YOUTUBE_URL }), "client-1", server);
+      broadcastMessages = [];
+
+      room.processClientLoadedAudioSource("client-1", server, AUDIO_URL);
+      room.processClientLoadedAudioSource("client-2", server, YOUTUBE_URL);
+      room.processClientLoadedAudioSource("client-3", server, YOUTUBE_URL);
+      room.processClientLoadedAudioSource("client-4", server, YOUTUBE_URL);
+      expect(getScheduledActionBroadcasts()).toHaveLength(0);
+
+      room.processClientLoadedAudioSource("client-1", server, YOUTUBE_URL);
+      expect(getScheduledActionBroadcasts()).toHaveLength(1);
+    });
+
+    it("does not add late joiners to an in-flight loading quorum", () => {
+      addYouTubeSource(room);
+      addClientsToRoom(room, 2);
+
+      room.initiateAudioSourceLoad(createPlayAction({ audioSource: YOUTUBE_URL }), "client-1", server);
+      room.addClient(createMockWs({ clientId: "late-client" }));
+      broadcastMessages = [];
+
+      room.processClientLoadedAudioSource("client-1", server, YOUTUBE_URL);
+      room.processClientLoadedAudioSource("client-2", server, YOUTUBE_URL);
+
+      expect(getScheduledActionBroadcasts()).toHaveLength(1);
+    });
+
     it("should trigger play when all clients have loaded", () => {
       addClientsToRoom(room, 4);
 
@@ -292,6 +333,19 @@ describe("Audio Loading Coordination", () => {
 
       // Should still only have 1 scheduled action (timeout was cleared)
       expect(getScheduledActionBroadcasts()).toHaveLength(1);
+    });
+
+    it("cancels YouTube playback when no client can prepare the video", () => {
+      addYouTubeSource(room);
+      addClientsToRoom(room, 2);
+
+      room.initiateAudioSourceLoad(createPlayAction({ audioSource: YOUTUBE_URL }), "client-1", server);
+      broadcastMessages = [];
+
+      clock.tick(10_000);
+
+      expect(getScheduledActionBroadcasts()).toHaveLength(0);
+      expect(room.getPlaybackState().type).toBe("paused");
     });
   });
 

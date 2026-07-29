@@ -1,7 +1,7 @@
 import { cn, extractFileNameFromUrl, formatTime } from "@/lib/utils";
 import { AudioSourceState, useGlobalStore } from "@/store/global";
 import { sendWSRequest } from "@/utils/ws";
-import { ClientActionEnum } from "@beatsync/shared";
+import { ClientActionEnum, isYouTubeSource } from "@beatsync/shared";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
@@ -43,6 +43,9 @@ export const QueueSortableItem = ({
   const isPlayingThis = isSelected && isPlaying;
   const isLoading = sourceState.status === "loading";
   const isError = sourceState.status === "error";
+  const sourceLabel = isYouTubeSource(sourceState.source)
+    ? `YouTube · ${sourceState.source.videoId}`
+    : extractFileNameFromUrl(sourceState.source.url);
 
   const handleItemClick = (sourceState: AudioSourceState) => {
     if (!canMutate) return;
@@ -237,7 +240,7 @@ export const QueueSortableItem = ({
               isLoading && "opacity-60"
             )}
           >
-            {extractFileNameFromUrl(sourceState.source.url)}
+            {sourceLabel}
             {isError && sourceState.error && <span className="text-xs text-red-400 ml-2">({sourceState.error})</span>}
           </div>
         </div>

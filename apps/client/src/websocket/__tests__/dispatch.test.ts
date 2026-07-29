@@ -45,6 +45,26 @@ describe("dispatchWSResponse", () => {
     });
   });
 
+  it("preserves the source and position when routing a scheduled pause", () => {
+    const schedulePause = mock(() => {});
+    useGlobalStore.setState({ schedulePause });
+
+    dispatchWSResponse({
+      response: {
+        type: "SCHEDULED_ACTION",
+        serverTimeToExecute: 23456,
+        scheduledAction: { type: "PAUSE", trackTimeSeconds: 12.5, audioSource: "youtube-source" },
+      },
+      context: createContext(),
+    });
+
+    expect(schedulePause).toHaveBeenCalledWith({
+      audioSource: "youtube-source",
+      trackTimeSeconds: 12.5,
+      targetServerTime: 23456,
+    });
+  });
+
   it("answers LIVENESS_PING with a LIVENESS_PONG on the socket that delivered it", () => {
     // This failure is invisible in development: foreground tabs send NTP every
     // 2.5s and are never pinged, so a broken PONG reply shows no symptom in any

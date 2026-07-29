@@ -3,6 +3,7 @@ import { useGlobalStore } from "@/store/global";
 import { Library, ListMusic, PartyPopper } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { TopBar } from "../room/TopBar";
+import { YouTubePlayer } from "../room/YouTubePlayer";
 import { SyncProgress } from "../ui/SyncProgress";
 import { BeatFlash } from "./BeatFlash";
 import { Bottom } from "./Bottom";
@@ -37,6 +38,7 @@ export const Dashboard = ({ roomId }: DashboardProps) => {
       <BeatFlash />
       {/* Top bar: Fixed height */}
       <TopBar roomId={roomId} />
+      <YouTubePlayer />
 
       {/* Show SyncProgress during reconnection (when user has already started but lost sync) */}
       {!isSynced && hasUserStartedSystem && !isLoadingAudio && <SyncProgress />}

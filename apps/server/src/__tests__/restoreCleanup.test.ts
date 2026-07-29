@@ -5,6 +5,8 @@ import { createMockWs } from "@/__tests__/mocks/websocket";
 import { BackupManager } from "@/managers/BackupManager";
 import { globalManager } from "@/managers/GlobalManager";
 
+const validateAudioFileExists = mock(() => true);
+
 mockR2({
   downloadJSON: mock(() => ({
     timestamp: Date.now() - 60000,
@@ -22,7 +24,14 @@ mockR2({
               lastNtpResponse: Date.now(),
             },
           ],
-          audioSources: [{ url: "test.mp3" }],
+          audioSources: [
+            { url: "test.mp3" },
+            {
+              sourceType: "youtube",
+              videoId: "dQw4w9WgXcQ",
+              url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            },
+          ],
           globalVolume: 1,
           playbackState: {
             type: "paused",
@@ -46,6 +55,7 @@ mockR2({
     },
   })),
   getLatestFileWithPrefix: mock(() => "state-backup/backup-test.json"),
+  validateAudioFileExists,
 });
 
 describe("Restore Cleanup", () => {
@@ -53,6 +63,7 @@ describe("Restore Cleanup", () => {
 
   beforeEach(() => {
     clock = sinon.useFakeTimers();
+    validateAudioFileExists.mockClear();
     const roomIds = globalManager.getRoomIds();
     for (const roomId of roomIds) {
       globalManager.deleteRoom(roomId);
@@ -84,8 +95,9 @@ describe("Restore Cleanup", () => {
     expect(room2.hasActiveConnections()).toBe(false);
 
     // Verify audio sources were restored
-    expect(room1.getState().audioSources.length).toBe(1);
+    expect(room1.getState().audioSources.length).toBe(2);
     expect(room2.getState().audioSources.length).toBe(0);
+    expect(validateAudioFileExists).toHaveBeenCalledTimes(1);
   });
 
   it("should cancel cleanup when a real client connects to restored room", async () => {

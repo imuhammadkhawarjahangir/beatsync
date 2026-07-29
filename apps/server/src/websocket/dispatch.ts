@@ -1,5 +1,6 @@
 import type { WSRequestType } from "@beatsync/shared";
 import type { ServerWebSocket } from "bun";
+import { sendUnicast } from "@/utils/responses";
 import type { BunServer, WSData } from "@/utils/websocket";
 import { WS_REGISTRY } from "@/websocket/registry";
 
@@ -46,5 +47,12 @@ export async function dispatchMessage({
     });
   } catch (error) {
     console.error(`[${ws.data.roomId}] Websocket handler ${handler.description} threw error:"`, error);
+    sendUnicast({
+      ws,
+      message: {
+        type: "ERROR",
+        message: error instanceof Error ? error.message : "The request could not be completed",
+      },
+    });
   }
 }

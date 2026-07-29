@@ -108,6 +108,7 @@ export const Player = () => {
       play(position);
     } else {
       useGlobalStore.setState({ currentTime: position });
+      useGlobalStore.getState().broadcastPause();
     }
   }, []);
 

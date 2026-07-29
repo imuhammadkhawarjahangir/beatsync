@@ -3,6 +3,7 @@ import { useGlobalStore } from "@/store/global";
 import { getProbeStats, handleNTPResponse } from "@/utils/ntp";
 import { sendWSRequest } from "@/utils/ws";
 import { ClientActionEnum, ServerActionEnum, type ExtractWSResponseFrom } from "@beatsync/shared";
+import { toast } from "sonner";
 import type { WebsocketResponseRegistry } from "@/websocket/types";
 
 type RoomEvent = ExtractWSResponseFrom["ROOM_EVENT"]["event"];
@@ -41,8 +42,12 @@ const SCHEDULED_ACTION_REGISTRY: {
       audioSource: action.audioSource,
     });
   },
-  PAUSE: ({ serverTimeToExecute }) => {
-    useGlobalStore.getState().schedulePause({ targetServerTime: serverTimeToExecute });
+  PAUSE: ({ action, serverTimeToExecute }) => {
+    useGlobalStore.getState().schedulePause({
+      audioSource: action.audioSource,
+      trackTimeSeconds: action.trackTimeSeconds,
+      targetServerTime: serverTimeToExecute,
+    });
   },
   SPATIAL_CONFIG: ({ action }) => {
     const { processSpatialConfig, isSpatialAudioEnabled, setIsSpatialAudioEnabled } = useGlobalStore.getState();
@@ -66,6 +71,12 @@ const SCHEDULED_ACTION_REGISTRY: {
 };
 
 export const WS_RESPONSE_REGISTRY: WebsocketResponseRegistry = {
+  [ServerActionEnum.enum.ERROR]: {
+    handle: ({ response }) => {
+      toast.error(response.message);
+    },
+    description: "Server request error",
+  },
   [ServerActionEnum.enum.LIVENESS_PING]: {
     handle: ({ context }) => {
       // Server liveness probe — sent only after ~15s of silence, i.e. when this

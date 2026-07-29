@@ -21,6 +21,7 @@ import type {
   WSBroadcastType,
 } from "@beatsync/shared";
 import { ChatMessageSchema, ClientDataSchema, epochNow, LOW_PASS_CONSTANTS, NTP_CONSTANTS } from "@beatsync/shared";
+import { isYouTubeSource } from "@beatsync/shared";
 import { AudioSourceSchema, GRID } from "@beatsync/shared/types/basic";
 import type { SendLocationSchema } from "@beatsync/shared/types/WSRequest";
 import type { ServerWebSocket } from "bun";
@@ -87,6 +88,7 @@ interface PendingPlayState {
   timeout: NodeJS.Timeout;
   playAction: PlayActionType;
   initiatorClientId: string;
+  requiredClientIds: Set<string>;
   server: BunServer;
 }
 
@@ -96,6 +98,7 @@ interface PendingPlayState {
  */
 export class RoomManager {
   private static readonly AUDIO_LOAD_TIMEOUT_MS = 3000; // 3 seconds max wait for audio loading
+  private static readonly YOUTUBE_LOAD_TIMEOUT_MS = 10_000;
   // Liveness policy. NTP recency can't be used for liveness: backgrounded tabs have
   // throttled timers (no NTP) but still run message handlers, so they can answer PINGs.
   static readonly LIVENESS_PING_AFTER_MS = 15_000; // silent this long -> send PING
@@ -178,17 +181,26 @@ export class RoomManager {
     }
 
     // Set up timeout to execute play even if some clients don't respond
+    const loadTimeoutMs = isYouTubeSource(audioSource)
+      ? RoomManager.YOUTUBE_LOAD_TIMEOUT_MS
+      : RoomManager.AUDIO_LOAD_TIMEOUT_MS;
     const timeout = setTimeout(() => {
-      console.log(`Audio loading timeout reached after ${RoomManager.AUDIO_LOAD_TIMEOUT_MS}ms. Proceeding with play.`);
+      if (isYouTubeSource(audioSource) && this.pendingPlay?.clientsLoaded.size === 0) {
+        console.warn(`No clients could prepare YouTube source ${audioSource.url}; cancelling playback.`);
+        this.clearAudioLoadingState();
+        return;
+      }
+      console.log(`Audio loading timeout reached after ${loadTimeoutMs}ms. Proceeding with play.`);
       this.executeScheduledPlay(server);
-    }, RoomManager.AUDIO_LOAD_TIMEOUT_MS);
+    }, loadTimeoutMs);
 
     // Store pending play state
     this.pendingPlay = {
-      clientsLoaded: new Set([initiatorClientId]),
+      clientsLoaded: new Set(isYouTubeSource(audioSource) ? [] : [initiatorClientId]),
       timeout,
       playAction,
       initiatorClientId,
+      requiredClientIds: new Set(this.getClients().map((client) => client.clientId)),
       server,
     };
 
@@ -201,6 +213,7 @@ export class RoomManager {
         event: {
           type: "LOAD_AUDIO_SOURCE",
           audioSourceToPlay: audioSource,
+          trackTimeSeconds: playAction.trackTimeSeconds,
         },
       },
     });
@@ -214,19 +227,22 @@ export class RoomManager {
       return false;
     }
 
-    const clientCount = this.getClients().length;
+    const connectedClientIds = new Set(this.getClients().map((client) => client.clientId));
+    const requiredConnectedClientIds = [...this.pendingPlay.requiredClientIds].filter((clientId) =>
+      connectedClientIds.has(clientId)
+    );
     // Don't start playback if there are no clients
-    if (clientCount === 0) {
+    if (requiredConnectedClientIds.length === 0) {
       return false;
     }
 
-    return this.pendingPlay.clientsLoaded.size === clientCount;
+    return requiredConnectedClientIds.every((clientId) => this.pendingPlay?.clientsLoaded.has(clientId));
   }
 
   /**
    * Process when a client reports they've loaded the audio source
    */
-  processClientLoadedAudioSource(clientId: string, server: BunServer): void {
+  processClientLoadedAudioSource(clientId: string, server: BunServer, sourceUrl?: string): void {
     if (IS_DEMO_MODE) {
       this.serverRef = server;
       this.demoAudioReadyClients.add(clientId);
@@ -238,6 +254,17 @@ export class RoomManager {
       console.warn(
         `Room ${this.roomId}: Client ${clientId} reported audio source loaded, but no pending play state found`
       );
+      return;
+    }
+
+    if (sourceUrl && sourceUrl !== this.pendingPlay.playAction.audioSource) {
+      console.warn(
+        `Room ${this.roomId}: Ignoring stale loaded event for ${sourceUrl}; waiting for ${this.pendingPlay.playAction.audioSource}`
+      );
+      return;
+    }
+
+    if (!this.pendingPlay.requiredClientIds.has(clientId)) {
       return;
     }
 
@@ -1212,6 +1239,19 @@ export class RoomManager {
       return new Error(`Mismatched audio sources length`);
     }
 
-    this.audioSources = newOrder;
+    const existingByUrl = new Map<string, AudioSourceType[]>();
+    for (const source of this.audioSources) {
+      const matchingSources = existingByUrl.get(source.url) ?? [];
+      matchingSources.push(source);
+      existingByUrl.set(source.url, matchingSources);
+    }
+    const reordered = newOrder.map((source) => existingByUrl.get(source.url)?.shift());
+
+    if (reordered.some((source) => !source)) {
+      console.warn(`Attempted to reorder unknown audio sources in room ${this.roomId}`);
+      return new Error("Reordered audio sources must match the current queue");
+    }
+
+    this.audioSources = reordered as AudioSourceType[];
   }
 }

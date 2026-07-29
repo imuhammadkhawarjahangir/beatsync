@@ -14,9 +14,18 @@ export const PositionSchema = z.object({
 });
 export type PositionType = z.infer<typeof PositionSchema>;
 
-export const AudioSourceSchema = z.object({
+export const FileAudioSourceSchema = z.object({
   url: z.string(),
+  sourceType: z.literal("audio").optional(),
 });
+
+export const YouTubeSourceSchema = z.object({
+  url: z.string(),
+  sourceType: z.literal("youtube"),
+  videoId: z.string().regex(/^[A-Za-z0-9_-]{11}$/),
+});
+
+export const AudioSourceSchema = z.union([FileAudioSourceSchema, YouTubeSourceSchema]);
 export type AudioSourceType = z.infer<typeof AudioSourceSchema>;
 
 export const ChatMessageSchema = z.object({

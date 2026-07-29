@@ -1,5 +1,6 @@
 import { extractFileNameFromUrl } from "@/lib/utils";
 import { useGlobalStore } from "@/store/global";
+import { isYouTubeSource } from "@beatsync/shared";
 import { useEffect } from "react";
 
 export const useDocumentTitle = () => {
@@ -10,7 +11,9 @@ export const useDocumentTitle = () => {
   useEffect(() => {
     const track = getSelectedTrack();
     if (isPlaying && track) {
-      const songName = extractFileNameFromUrl(track.source.url);
+      const songName = isYouTubeSource(track.source)
+        ? `YouTube · ${track.source.videoId}`
+        : extractFileNameFromUrl(track.source.url);
       document.title = `${songName}`;
     } else {
       document.title = "Beatsync";

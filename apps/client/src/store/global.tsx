@@ -5,6 +5,7 @@ import { getKickBuffer } from "@/components/dashboard/Metronome";
 import { IS_DEMO_MODE } from "@/lib/demo";
 import { getApiUrl } from "@/lib/urls";
 import { extractFileNameFromUrl } from "@/lib/utils";
+import { YouTubeCueSupersededError, youtubePlayerController } from "@/lib/youtubePlayer";
 import {
   calculateOffsetEstimate,
   calculateWaitTimeMilliseconds,
@@ -33,6 +34,7 @@ import {
   SetAudioSourcesType,
   SpatialConfigType,
   epochNow,
+  isYouTubeSource,
 } from "@beatsync/shared";
 import { Mutex } from "async-mutex";
 import { toast } from "sonner";
@@ -74,7 +76,7 @@ export const AudioSourceStateSchema = z.discriminatedUnion("status", [
   z.object({
     source: AudioSourceSchema,
     status: z.literal("loaded"),
-    buffer: z.custom<AudioBuffer>(),
+    buffer: z.custom<AudioBuffer>().optional(),
   }),
   z.object({
     source: AudioSourceSchema,
@@ -128,6 +130,9 @@ interface GlobalStateValues {
   // Tracking properties
   playbackStartTime: number;
   playbackOffset: number;
+  youtubePlaybackStartPosition: number;
+  youtubePlaybackTargetServerTime: number;
+  youtubePlaybackExpectedPlaying: boolean;
 
   // Shuffle state
   isShuffled: boolean;
@@ -173,10 +178,10 @@ interface GlobalState extends GlobalStateValues {
   changeAudioSource: (url: string) => boolean;
   findAudioIndexByUrl: (url: string) => number | null;
   schedulePlay: (data: { trackTimeSeconds: number; targetServerTime: number; audioSource: string }) => void;
-  schedulePause: (data: { targetServerTime: number }) => void;
+  schedulePause: (data: { audioSource: string; trackTimeSeconds: number; targetServerTime: number }) => void;
   setSocket: (socket: WebSocket) => void;
   broadcastPlay: (trackTimeSeconds?: number) => void;
-  broadcastPause: () => void;
+  broadcastPause: (trackTimeSeconds?: number) => void;
   startSpatialAudio: () => void;
   sendStopSpatialAudio: () => void;
   sendChatMessage: (text: string) => void;
@@ -246,6 +251,9 @@ const initialState: GlobalStateValues = {
   currentTime: 0,
   playbackStartTime: 0,
   playbackOffset: 0,
+  youtubePlaybackStartPosition: 0,
+  youtubePlaybackTargetServerTime: 0,
+  youtubePlaybackExpectedPlaying: false,
   selectedAudioUrl: "",
 
   // Spatial audio
@@ -347,6 +355,9 @@ const getWaitTimeSeconds = (state: GlobalState, targetServerTime: number) => {
   return Math.max(0, (waitTimeMilliseconds - outputLatencyMs) / 1000);
 };
 
+const getYouTubeWaitTimeSeconds = (state: GlobalState, targetServerTime: number) =>
+  Math.max(0, calculateWaitTimeMilliseconds(targetServerTime, state.offsetEstimate + state.nudgeOffsetMs) / 1000);
+
 const resolveAudioUrl = (url: string): string => {
   if (url.startsWith("/")) return `${getApiUrl()}${url}`;
 
@@ -418,6 +429,8 @@ export const useCanMutate = () => {
 };
 
 export const useGlobalStore = create<GlobalState>((set, get) => {
+  let youtubePlaybackGeneration = 0;
+
   // Helper function to manage LRU cache
   const addURLToLRU = (url: string) => {
     const state = get();
@@ -459,10 +472,45 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
   };
 
   // Load audio buffer for a source
-  const loadAudioSource = async (url: string) => {
+  const loadAudioSource = async (url: string, youtubeStartSeconds = 0) => {
     try {
       const state = get();
       const existing = state.audioSources.find((as) => as.source.url === url);
+      const reportSourceLoaded = (source: AudioSourceType) => {
+        const { socket } = getSocket(get());
+        sendWSRequest({
+          ws: socket,
+          request: {
+            type: ClientActionEnum.enum.AUDIO_SOURCE_LOADED,
+            source,
+          },
+        });
+      };
+
+      if (existing && isYouTubeSource(existing.source)) {
+        if (existing.status === "loading") return;
+
+        set((currentState) => ({
+          audioSources: currentState.audioSources.map((source) => {
+            if (!isYouTubeSource(source.source)) return source;
+            return source.source.url === url
+              ? { source: existing.source, status: "loading" }
+              : { source: source.source, status: "idle" };
+          }),
+        }));
+
+        await youtubePlayerController.cue(existing.source.videoId, youtubeStartSeconds);
+        const duration = youtubePlayerController.getDuration();
+
+        set((currentState) => ({
+          audioSources: currentState.audioSources.map((source) =>
+            source.source.url === url ? { source: existing.source, status: "loaded" } : source
+          ),
+          ...(currentState.selectedAudioUrl === url && duration > 0 ? { duration } : {}),
+        }));
+        reportSourceLoaded(existing.source);
+        return;
+      }
 
       // Skip if already loaded or in-flight
       if (existing && existing.status === "loading") {
@@ -471,15 +519,7 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
       if (existing && existing.status === "loaded") {
         // Update LRU queue when accessing an already loaded buffer
         addURLToLRU(url);
-
-        const { socket } = getSocket(state);
-        sendWSRequest({
-          ws: socket,
-          request: {
-            type: ClientActionEnum.enum.AUDIO_SOURCE_LOADED,
-            source: { url },
-          },
-        });
+        reportSourceLoaded(existing.source);
         return;
       }
 
@@ -516,15 +556,21 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
       addURLToLRU(url);
 
       // Send message to server that the source is loaded (re-read socket in case of reconnect during fetch)
-      const { socket } = getSocket(get());
-      sendWSRequest({
-        ws: socket,
-        request: {
-          type: ClientActionEnum.enum.AUDIO_SOURCE_LOADED,
-          source: { url },
-        },
-      });
+      const loadedSource = get().audioSources.find((source) => source.source.url === url)?.source;
+      if (loadedSource) reportSourceLoaded(loadedSource);
     } catch (error) {
+      if (error instanceof YouTubeCueSupersededError) {
+        set((state) => ({
+          audioSources:
+            state.selectedAudioUrl === url
+              ? state.audioSources
+              : state.audioSources.map((source) =>
+                  source.source.url === url ? { source: source.source, status: "idle" } : source
+                ),
+        }));
+        return;
+      }
+
       console.error(`Failed to load audio source ${url}:`, error);
       // Update the source with error status
       set((currentState) => ({
@@ -720,9 +766,13 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
     changeAudioSource: (url) => {
       const state = get();
       const wasPlaying = state.isPlaying; // Store if it was playing *before* stopping
+      const currentSource = state.audioSources.find((source) => source.source.url === state.selectedAudioUrl)?.source;
 
       // Stop any current playback immediately when switching tracks
-      if (state.isPlaying && state.audioPlayer) {
+      if (currentSource && isYouTubeSource(currentSource)) {
+        youtubePlaybackGeneration++;
+        youtubePlayerController.pauseNow();
+      } else if (state.isPlaying && state.audioPlayer) {
         try {
           state.audioPlayer.sourceNode.stop();
         } catch (e) {
@@ -735,7 +785,9 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
       let newDuration = 0;
       if (audioIndex !== null) {
         const audioSourceState = state.audioSources[audioIndex];
-        if (audioSourceState.status === "loaded" && audioSourceState.buffer) {
+        if (isYouTubeSource(audioSourceState.source)) {
+          newDuration = youtubePlayerController.getDuration();
+        } else if (audioSourceState.status === "loaded" && audioSourceState.buffer) {
           newDuration = audioSourceState.buffer.duration;
         }
         // If not loaded, duration will be 0 (will be updated when loaded)
@@ -748,6 +800,7 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
         currentTime: 0,
         playbackStartTime: 0,
         playbackOffset: 0,
+        youtubePlaybackExpectedPlaying: false,
         duration: newDuration,
       });
 
@@ -780,6 +833,66 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
       console.log(
         `[Schedule] wait=${waitTimeSeconds.toFixed(3)}s = max(0, (${_rawWaitMs.toFixed(1)}ms - ${_olMs.toFixed(1)}ms OL) / 1000) | offset=${state.offsetEstimate.toFixed(1)}ms nudge=${state.nudgeOffsetMs}ms`
       );
+
+      const selectedSourceState = state.audioSources.find((source) => source.source.url === data.audioSource);
+      if (selectedSourceState && isYouTubeSource(selectedSourceState.source)) {
+        const youtubeSource = selectedSourceState.source;
+        const scheduleGeneration = ++youtubePlaybackGeneration;
+        if (state.audioPlayer) {
+          try {
+            state.audioPlayer.sourceNode.onended = null;
+            state.audioPlayer.sourceNode.disconnect();
+            state.audioPlayer.sourceNode.stop();
+          } catch (_) {}
+        }
+        waitTimeSeconds = getYouTubeWaitTimeSeconds(state, data.targetServerTime);
+        let youtubeTrackTime = data.trackTimeSeconds;
+        if (waitTimeSeconds < 0.05) {
+          const elapsedSinceTargetSeconds = Math.max(
+            0,
+            (epochNow() + state.offsetEstimate + state.nudgeOffsetMs - data.targetServerTime) / 1000
+          );
+          youtubeTrackTime += elapsedSinceTargetSeconds;
+          waitTimeSeconds = 0;
+        }
+
+        set({
+          selectedAudioUrl: data.audioSource,
+          isPlaying: true,
+          playbackOffset: youtubeTrackTime,
+          currentTime: youtubeTrackTime,
+          duration: youtubePlayerController.getDuration(),
+          youtubePlaybackStartPosition: data.trackTimeSeconds,
+          youtubePlaybackTargetServerTime: data.targetServerTime,
+          youtubePlaybackExpectedPlaying: true,
+        });
+
+        void (async () => {
+          await youtubePlayerController.cue(youtubeSource.videoId, youtubeTrackTime);
+          if (scheduleGeneration !== youtubePlaybackGeneration) return;
+          const latestState = get();
+          const refreshedWaitSeconds = getYouTubeWaitTimeSeconds(latestState, data.targetServerTime);
+          const elapsedAfterTargetSeconds = Math.max(
+            0,
+            (epochNow() + latestState.offsetEstimate + latestState.nudgeOffsetMs - data.targetServerTime) / 1000
+          );
+          await youtubePlayerController.schedulePlay(
+            youtubeSource.videoId,
+            data.trackTimeSeconds + elapsedAfterTargetSeconds,
+            refreshedWaitSeconds
+          );
+        })().catch((error) => {
+          if (scheduleGeneration !== youtubePlaybackGeneration) return;
+          console.error("Failed to schedule YouTube playback:", error);
+          set({ isPlaying: false, youtubePlaybackExpectedPlaying: false });
+          toast.error("Unable to start this YouTube video");
+        });
+        return;
+      }
+
+      youtubePlaybackGeneration++;
+      youtubePlayerController.pauseNow();
+      set({ youtubePlaybackExpectedPlaying: false });
 
       // Check if the scheduled time has already passed
       if (waitTimeSeconds < 0.05) {
@@ -909,10 +1022,35 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
       });
     },
 
-    schedulePause: ({ targetServerTime }: { targetServerTime: number }) => {
+    schedulePause: ({ audioSource, trackTimeSeconds, targetServerTime }) => {
       const state = get();
-      const waitTimeSeconds = getWaitTimeSeconds(state, targetServerTime);
+      const selectedSource = state.audioSources.find((source) => source.source.url === audioSource)?.source;
+      const waitTimeSeconds =
+        selectedSource && isYouTubeSource(selectedSource)
+          ? getYouTubeWaitTimeSeconds(state, targetServerTime)
+          : getWaitTimeSeconds(state, targetServerTime);
       console.log(`Pausing track in ${waitTimeSeconds}`);
+
+      if (selectedSource && isYouTubeSource(selectedSource)) {
+        youtubePlaybackGeneration++;
+        const wasExpectedPlaying = state.youtubePlaybackExpectedPlaying;
+        const requestedPosition = trackTimeSeconds + (wasExpectedPlaying ? waitTimeSeconds : 0);
+        const positionAtPause = state.duration > 0 ? Math.min(requestedPosition, state.duration) : requestedPosition;
+        set({ youtubePlaybackExpectedPlaying: false });
+        youtubePlayerController.schedulePause(waitTimeSeconds, positionAtPause, () => {
+          set({
+            currentTime: positionAtPause,
+            isPlaying: false,
+            youtubePlaybackExpectedPlaying: false,
+          });
+        });
+        return;
+      }
+
+      if (!state.isPlaying) {
+        set({ currentTime: trackTimeSeconds });
+        return;
+      }
 
       state.pauseAudio({
         when: waitTimeSeconds,
@@ -947,7 +1085,7 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
       });
     },
 
-    broadcastPause: () => {
+    broadcastPause: (trackTimeSeconds?: number) => {
       const state = get();
       const { socket } = getSocket(state);
 
@@ -955,7 +1093,7 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
         ws: socket,
         request: {
           type: ClientActionEnum.enum.PAUSE,
-          trackTimeSeconds: state.getCurrentTrackPosition(),
+          trackTimeSeconds: trackTimeSeconds ?? state.getCurrentTrackPosition(),
           audioSource: state.selectedAudioUrl,
         },
       });
@@ -1118,6 +1256,11 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
     getCurrentTrackPosition: () => {
       const state = get();
       const { audioPlayer, isPlaying, currentTime, playbackStartTime, playbackOffset } = state; // Destructure for easier access
+      const selectedSource = state.audioSources.find((source) => source.source.url === state.selectedAudioUrl)?.source;
+
+      if (selectedSource && isYouTubeSource(selectedSource)) {
+        return isPlaying ? youtubePlayerController.getCurrentTime() : currentTime;
+      }
 
       if (!isPlaying || !audioPlayer) {
         return currentTime; // Return the saved position when paused or not initialized
@@ -1433,11 +1576,15 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
 
       // Use singleton's setMasterGain with ramping
       audioContextManager.setMasterGain(finalGain, rampTime);
+      youtubePlayerController.setVolume(finalGain);
     },
 
     getAudioDuration: ({ url }) => {
       const state = get();
       const audioSource = state.audioSources.find((as) => as.source.url === url);
+      if (audioSource && isYouTubeSource(audioSource.source)) {
+        return youtubePlayerController.getDuration();
+      }
       if (!audioSource || audioSource.status !== "loaded" || !audioSource.buffer) {
         // Return 0 for loading/error states or not found
         return 0;
@@ -1519,19 +1666,32 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
       const currentStillExists = newAudioSources.some((as) => as.source.url === state.selectedAudioUrl);
 
       if (!currentStillExists && state.selectedAudioUrl) {
+        const removedSource = state.audioSources.find((source) => source.source.url === state.selectedAudioUrl)?.source;
+
         // Stop playback if current track was removed
-        if (state.isPlaying) {
+        if (removedSource && isYouTubeSource(removedSource)) {
+          youtubePlaybackGeneration++;
+          youtubePlayerController.pauseNow();
+        } else if (state.isPlaying) {
           state.pauseAudio({ when: 0 });
         }
 
         // Clear selected track - don't auto-select another
-        set({ selectedAudioUrl: "" });
+        set({
+          selectedAudioUrl: "",
+          isPlaying: false,
+          currentTime: 0,
+          duration: 0,
+          youtubePlaybackExpectedPlaying: false,
+        });
       }
     },
 
     // Reset function to clean up state
     resetStore: () => {
       const state = get();
+      youtubePlaybackGeneration++;
+      youtubePlayerController.pauseNow();
 
       // Stop any playing audio
       if (state.isPlaying && state.audioPlayer) {
@@ -1679,9 +1839,9 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
     },
 
     // Audio source methods
-    handleLoadAudioSource: ({ audioSourceToPlay }: LoadAudioSourceType) => {
-      set({ selectedAudioUrl: audioSourceToPlay.url });
-      loadAudioSource(audioSourceToPlay.url);
+    handleLoadAudioSource: ({ audioSourceToPlay, trackTimeSeconds }: LoadAudioSourceType) => {
+      get().changeAudioSource(audioSourceToPlay.url);
+      void loadAudioSource(audioSourceToPlay.url, trackTimeSeconds);
     },
   };
 });

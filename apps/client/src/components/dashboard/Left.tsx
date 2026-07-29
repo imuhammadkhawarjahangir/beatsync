@@ -7,6 +7,7 @@ import { useRoomStore } from "@/store/room";
 import { Hash } from "lucide-react";
 import { motion } from "motion/react";
 import { AudioUploaderMinimal } from "../AudioUploaderMinimal";
+import { YouTubeUrlInput } from "../YouTubeUrlInput";
 import { Separator } from "../ui/separator";
 import { ConnectedUsersList } from "./ConnectedUsersList";
 import { RoomQRCode } from "./CopyRoom";
@@ -98,6 +99,7 @@ export const Left = ({ className }: LeftProps) => {
         <div className="pl-1">
           <AudioUploaderMinimal />
         </div>
+        <YouTubeUrlInput />
       </motion.div>
     </motion.div>
   );

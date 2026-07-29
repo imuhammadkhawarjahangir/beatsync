@@ -1,11 +1,6 @@
 import { z } from "zod";
 import { LOW_PASS_CONSTANTS } from "../constants";
-import {
-  LocationSchema,
-  PauseActionSchema,
-  PlayActionSchema,
-  SetPlaybackControlsSchema,
-} from "./WSRequest";
+import { LocationSchema, PauseActionSchema, PlayActionSchema, SetPlaybackControlsSchema } from "./WSRequest";
 import { AudioSourceSchema, ChatMessageSchema, PositionSchema } from "./basic";
 
 // Server -> client message types (mirrors ClientActionEnum for client -> server)
@@ -18,6 +13,7 @@ export const ServerActionEnum = z.enum([
   "NTP_RESPONSE", // Reply to an NTP_REQUEST time sync probe
   "SEARCH_RESPONSE", // Music search results
   "LIVENESS_PING", // Liveness probe; client replies with LIVENESS_PONG
+  "ERROR", // Typed request or validation error
 ]);
 
 // Client change
@@ -63,6 +59,7 @@ export type ChatUpdateType = z.infer<typeof ChatUpdateSchema>;
 const LoadAudioSourceSchema = z.object({
   type: z.literal("LOAD_AUDIO_SOURCE"),
   audioSourceToPlay: AudioSourceSchema,
+  trackTimeSeconds: z.number().nonnegative().default(0),
 });
 export type LoadAudioSourceType = z.infer<typeof LoadAudioSourceSchema>;
 
@@ -80,10 +77,7 @@ const RoomEventSchema = z.object({
 // SCHEDULED ACTIONS
 const SpatialConfigSchema = z.object({
   type: z.literal("SPATIAL_CONFIG"),
-  gains: z.record(
-    z.string(),
-    z.object({ gain: z.number().min(0).max(1), rampTime: z.number() })
-  ),
+  gains: z.record(z.string(), z.object({ gain: z.number().min(0).max(1), rampTime: z.number() })),
   listeningSource: PositionSchema,
 });
 
