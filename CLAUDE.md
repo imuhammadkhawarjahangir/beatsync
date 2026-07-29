@@ -33,6 +33,10 @@ bun test                 # Run tests (happy-dom + @testing-library/react, preloa
 bun lint                 # next lint
 ```
 
+Root Make aliases are available only for Docker operations: `make prod`, `make logs`,
+and `make ps`. Run `make help` for the complete list. `make down` preserves the
+`beatsync_server-data` volume.
+
 ## Architecture
 
 ### Server Manager Hierarchy
@@ -149,7 +153,10 @@ persistent storage in disposable deployments.
 
 ## Deployment
 
-- **Docker**: Multi-stage build with `oven/bun:1`. Exposes port 8080. Entry: `bun start`.
+- **Docker Compose**: Builds and runs the Next.js client on port 3000 and the Bun server on port 8080.
+  Run `bun run docker:prod`; client build-time URLs and server runtime settings both come from the root `.env`,
+  and the `beatsync_server-data` Docker volume persists local uploads and backups. Runtime defaults limit the server
+  to 1 CPU/1 GiB and the client to 0.5 CPU/512 MiB; these constraints are hardcoded in `docker-compose.yaml`.
 - **PM2**: Config in `pm2.config.js`. Process name: `beatsync-server`.
 - Server has graceful shutdown (SIGTERM/SIGINT) that backs up state to the configured storage backend before exit.
 

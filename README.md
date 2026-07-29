@@ -55,6 +55,31 @@ bun install          # installs once for all workspaces
 bun dev              # starts both client (:3000) and server (:8080)
 ```
 
+The root `Makefile` provides Docker deployment and operational workflows:
+
+```sh
+make help
+make config
+make prod
+make logs
+make ps
+```
+
+### Docker
+
+The production Compose stack runs the Next.js client on port `3000` and the Bun server on port `8080`.
+Client public URLs are compiled from the root `.env`, which Compose also injects into the server.
+When `STORAGE_MODE=local`, uploads and room backups persist in the Docker-managed `beatsync_server-data` volume.
+The Compose file hardcodes runtime limits of 1 CPU and 1 GiB RAM for the server, and 0.5 CPU and 512 MiB RAM for the
+client.
+
+```bash
+bun run docker:prod
+docker compose ps
+```
+
+Open `http://localhost:3000`, or replace `localhost` with the host computer's LAN IP from another device.
+
 | Directory         | Purpose                                                        |
 | ----------------- | -------------------------------------------------------------- |
 | `apps/server`     | Bun HTTP + WebSocket server                                    |

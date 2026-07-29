@@ -20,11 +20,14 @@ CORS_ALLOWED_ORIGINS=http://localhost:3000
 ```
 
 This stores uploaded audio and room-state backups under `apps/server/data` when the server is run from this
-workspace. For LAN access, set `LOCAL_PUBLIC_URL` to `http://SERVER_LAN_IP:8080`.
+workspace. Docker Compose mounts the Docker-managed `beatsync_server-data` volume at the same `data` directory when
+`STORAGE_MODE=local`. For LAN access, set `LOCAL_PUBLIC_URL` to `http://SERVER_LAN_IP:8080`.
 
 `CORS_ALLOWED_ORIGINS` is a comma-separated list of exact browser origins permitted to call the HTTP API and open
 WebSocket connections. Use `*` only when intentionally allowing every origin. In S3/R2 mode, the object-storage
 bucket needs its own matching CORS policy because those audio requests do not pass through this server.
+
+Docker Compose hardcodes the server to a 1 CPU limit, a 1 GiB memory limit, and a 256 MiB memory reservation.
 
 To use R2 or another S3-compatible service, set `STORAGE_MODE=s3` and configure `S3_BUCKET_NAME`, `S3_PUBLIC_URL`,
 `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, and `S3_SECRET_ACCESS_KEY`.

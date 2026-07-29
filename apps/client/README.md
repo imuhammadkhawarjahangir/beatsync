@@ -32,6 +32,8 @@ pnpm dev
 bun dev
 ```
 
+Docker Compose hardcodes the client to a 0.5 CPU limit, a 512 MiB memory limit, and a 128 MiB memory reservation.
+
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
 YouTube queue entries use the official IFrame Player API and require no additional environment variables. Browsers
