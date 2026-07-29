@@ -89,15 +89,17 @@ export const WebSocketManager = ({ roomId, username }: WebSocketManagerProps) =>
         try {
           const location = await getUserLocation();
 
-          sendWSRequest({
-            ws,
-            request: {
-              type: ClientActionEnum.enum.SEND_IP,
-              location,
-            },
-          });
+          if (location) {
+            sendWSRequest({
+              ws,
+              request: {
+                type: ClientActionEnum.enum.SEND_IP,
+                location,
+              },
+            });
+          }
         } catch (e) {
-          console.error("Failed to geolocate IP", e);
+          console.warn("Unexpected IP geolocation failure; continuing without location data.", e);
         }
       }
     };

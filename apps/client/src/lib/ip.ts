@@ -6,8 +6,10 @@ import { getCountryName } from "./country/codeToName";
 type RequiredResponse = Pick<z.infer<typeof LocationSchema>, "city" | "country" | "region" | "countryCode">;
 
 const FETCH_TIMEOUT_MS = 5000;
+const FAILED_LOOKUP_RETRY_MS = 5 * 60 * 1000;
 
 let cachedLocation: z.infer<typeof LocationSchema> | null = null;
+let lastFailedLookupAt = 0;
 
 const toLocation = (response: RequiredResponse): z.infer<typeof LocationSchema> => {
   const sanitized = sanitizeLocationFields(response);
@@ -19,9 +21,12 @@ const toLocation = (response: RequiredResponse): z.infer<typeof LocationSchema> 
   };
 };
 
-export const getUserLocation = async (): Promise<z.infer<typeof LocationSchema>> => {
+export const getUserLocation = async (): Promise<z.infer<typeof LocationSchema> | null> => {
   if (cachedLocation) {
     return cachedLocation;
+  }
+  if (lastFailedLookupAt > 0 && Date.now() - lastFailedLookupAt < FAILED_LOOKUP_RETRY_MS) {
+    return null;
   }
 
   const locationServices = [
@@ -39,7 +44,8 @@ export const getUserLocation = async (): Promise<z.infer<typeof LocationSchema>>
 
   for (const [index, result] of results.entries()) {
     if (result.status === "rejected") {
-      console.warn(`Location service ${locationServices[index].name} failed:`, result.reason);
+      const reason = result.reason instanceof Error ? result.reason.message : String(result.reason);
+      console.warn(`Location service ${locationServices[index].name} unavailable: ${reason}`);
       continue;
     }
     const response = result.value;
@@ -54,7 +60,9 @@ export const getUserLocation = async (): Promise<z.infer<typeof LocationSchema>>
   }
 
   if (!bestResponse) {
-    throw new Error("All IP location services failed");
+    lastFailedLookupAt = Date.now();
+    console.warn("IP location is unavailable; continuing without location data.");
+    return null;
   }
 
   const location = toLocation(bestResponse);
