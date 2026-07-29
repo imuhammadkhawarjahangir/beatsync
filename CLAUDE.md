@@ -80,6 +80,14 @@ Storage key structure: `room-{roomId}/{sanitized-name}☆{timestamp}.{ext}`
 
 Utilities: `apps/server/src/lib/r2.ts` (local and S3-compatible storage, upload/public URLs, listing, validation, deletion, and backups), `apps/server/src/utils/responses.ts` (CORS headers, error/success response helpers).
 
+YouTube sources use `{ sourceType: "youtube", videoId, url }` in the same queue. `ADD_YOUTUBE_SOURCE` validates and
+canonicalizes pasted URLs on the server. Clients cue the official IFrame Player, acknowledge readiness through
+`AUDIO_SOURCE_LOADED`, and reuse scheduled `PLAY`/`PAUSE` actions. The client corrects iframe drift periodically.
+YouTube media is never downloaded or routed through storage. Iframe audio cannot use the Web Audio low-pass filter,
+and ads, buffering, keyframe seeking, and autoplay policies make it less precise than uploaded audio.
+URL validation does not prove that a video exists or permits embedding. Deploy protocol changes atomically and
+refresh old tabs; legacy clients interpret an unknown YouTube source as ordinary downloadable audio.
+
 ### Client State Management
 
 Three Zustand stores in `apps/client/src/store/`:
@@ -93,8 +101,10 @@ HTTP data fetching uses Axios + TanStack React Query. WebSocket message utilitie
 
 When play is requested, the server doesn't immediately schedule playback. Instead:
 1. Server broadcasts `LOAD_AUDIO_SOURCE` to all clients
-2. Clients load/decode the audio and respond with `AUDIO_SOURCE_LOADED`
-3. Server waits for all clients (or 3s timeout) then schedules synchronized play
+2. Clients download/decode file audio or cue a YouTube iframe at the requested position, then respond with
+   `AUDIO_SOURCE_LOADED`
+3. Server waits for the clients present when loading began, then schedules synchronized play. File audio uses a
+   3-second timeout; YouTube uses 10 seconds and is cancelled if no client can prepare it.
 
 ### Spatial Audio
 

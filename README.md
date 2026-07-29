@@ -9,6 +9,7 @@ https://github.com/user-attachments/assets/2aa385a7-2a07-4ab5-80b1-fda553efc57b
 - **Millisecond-accurate synchronization**: Abstracts [NTP-inspired](https://en.wikipedia.org/wiki/Network_Time_Protocol) time synchronization primitives to achieve a high degree of accuracy
 - **Cross-platform**: Works on any device with a modern browser (Chrome recommended for best performance)
 - **Spatial audio:** Allows controlling device volumes through a virtual listening source for interesting sonic effects
+- **YouTube playback:** Add YouTube video URLs and coordinate play, pause, seek, and drift correction across devices
 - **Polished interface**: Smooth loading states, status indicators, and all UI elements come built-in
 - **Self-hostable**: Run your own instance with a few commands
 
@@ -31,6 +32,18 @@ No S3 bucket is required when `STORAGE_MODE=local`. To use R2/S3 instead, set `S
 
 For access from other computers on the same network, replace `localhost` in both environment files with the server
 computer's LAN IP and ensure ports `3000` and `8080` are reachable.
+
+YouTube playback uses the official IFrame Player API and does not require an API key. Each device may need to click
+**Enable playback** once because browsers can block scripted media playback until the user interacts with the page.
+Only videos that are available to the participant and permit embedding can play. Unlike uploaded Web Audio tracks,
+YouTube synchronization is best-effort: ads, buffering, keyframe seeking, and browser autoplay rules can introduce
+visible drift before periodic correction.
+
+Deploy the updated client, server, and shared package together, then refresh already-open room tabs. An older client
+does not understand the YouTube queue-source metadata.
+
+Before a public deployment, ensure the site's own terms and privacy policy cover its use of the YouTube IFrame
+Player API and meet the current YouTube API Services policy requirements.
 
 Run the following commands to start the server and client:
 
