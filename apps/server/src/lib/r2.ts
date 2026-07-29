@@ -14,9 +14,7 @@ import { mkdir, readdir, rm, stat } from "node:fs/promises";
 import { dirname, relative, resolve, sep } from "node:path";
 import sanitize from "sanitize-filename";
 
-const STORAGE_MODE = process.env.STORAGE_MODE === "local" ? "local" : "s3";
 const LOCAL_STORAGE_ROOT = resolve(process.env.LOCAL_STORAGE_PATH ?? "./data");
-const LOCAL_PUBLIC_URL = (process.env.LOCAL_PUBLIC_URL ?? "http://localhost:8080").replace(/\/$/, "");
 
 const S3_CONFIG = {
   BUCKET_NAME: process.env.S3_BUCKET_NAME!,
@@ -60,7 +58,11 @@ async function listLocalFiles(directory = LOCAL_STORAGE_ROOT): Promise<{ Key: st
 }
 
 export function isLocalStorageMode(): boolean {
-  return STORAGE_MODE === "local";
+  return process.env.STORAGE_MODE === "local";
+}
+
+function getLocalPublicUrl(): string {
+  return (process.env.LOCAL_PUBLIC_URL ?? "http://localhost:8080").replace(/\/$/, "");
 }
 
 const r2Client = new S3Client({
@@ -95,12 +97,10 @@ export async function generatePresignedUploadUrl(
   roomId: string,
   fileName: string,
   contentType: string,
-  expiresIn = 3600, // 1 hour
-  requestOrigin?: string
+  expiresIn = 3600 // 1 hour
 ): Promise<string> {
   if (isLocalStorageMode()) {
-    const origin = (requestOrigin ?? LOCAL_PUBLIC_URL).replace(/\/$/, "");
-    return `${origin}/upload/local/${encodeURIComponent(roomId)}/${encodeURIComponent(fileName)}`;
+    return `${getLocalPublicUrl()}/upload/local/${encodeURIComponent(roomId)}/${encodeURIComponent(fileName)}`;
   }
 
   const key = createKey(roomId, fileName);
@@ -121,12 +121,11 @@ export async function generatePresignedUploadUrl(
 /**
  * Get the public URL for an audio file (if public access is enabled)
  */
-export function getPublicAudioUrl(roomId: string, fileName: string, requestOrigin?: string): string {
+export function getPublicAudioUrl(roomId: string, fileName: string): string {
   // URL encode the filename to handle special characters like #, ?, &, etc.
   const encodedFileName = encodeURIComponent(fileName);
   if (isLocalStorageMode()) {
-    const origin = (requestOrigin ?? LOCAL_PUBLIC_URL).replace(/\/$/, "");
-    return `${origin}/audio/local/room-${encodeURIComponent(roomId)}/${encodedFileName}`;
+    return `${getLocalPublicUrl()}/audio/local/room-${encodeURIComponent(roomId)}/${encodedFileName}`;
   }
   return `${S3_CONFIG.PUBLIC_URL}/room-${roomId}/${encodedFileName}`;
 }

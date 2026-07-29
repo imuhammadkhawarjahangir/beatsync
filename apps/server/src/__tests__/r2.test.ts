@@ -1,5 +1,11 @@
 import { describe, expect, it } from "bun:test";
-import { createKey, extractKeyFromUrl, generateAudioFileName, getPublicAudioUrl } from "@/lib/r2";
+import {
+  createKey,
+  extractKeyFromUrl,
+  generateAudioFileName,
+  generatePresignedUploadUrl,
+  getPublicAudioUrl,
+} from "@/lib/r2";
 
 describe("R2 Pure Functions", () => {
   describe("createKey", () => {
@@ -22,6 +28,27 @@ describe("R2 Pure Functions", () => {
     it("should encode special characters in filename", () => {
       const url = getPublicAudioUrl("123", "my song #1.mp3");
       expect(url).toContain(encodeURIComponent("my song #1.mp3"));
+    });
+
+    it("should use the configured HTTPS public URL for local uploads and audio", async () => {
+      const previousStorageMode = process.env.STORAGE_MODE;
+      const previousLocalPublicUrl = process.env.LOCAL_PUBLIC_URL;
+
+      try {
+        process.env.STORAGE_MODE = "local";
+        process.env.LOCAL_PUBLIC_URL = "https://beatsync.example/";
+
+        expect(await generatePresignedUploadUrl("123", "song.mp3", "audio/mpeg")).toBe(
+          "https://beatsync.example/upload/local/123/song.mp3"
+        );
+        expect(getPublicAudioUrl("123", "song.mp3")).toBe("https://beatsync.example/audio/local/room-123/song.mp3");
+      } finally {
+        if (previousStorageMode === undefined) delete process.env.STORAGE_MODE;
+        else process.env.STORAGE_MODE = previousStorageMode;
+
+        if (previousLocalPublicUrl === undefined) delete process.env.LOCAL_PUBLIC_URL;
+        else process.env.LOCAL_PUBLIC_URL = previousLocalPublicUrl;
+      }
     });
   });
 
