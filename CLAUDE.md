@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Beatsync is a high-precision web audio player for multi-device synchronized playback. Turborepo monorepo with three packages:
 
-- **`apps/client`**: Next.js 15 (App Router, React 19, Tailwind v4, Shadcn/ui)
+- **`apps/client`**: Next.js 16 (App Router, React 19, Tailwind v4, Shadcn/ui)
 - **`apps/server`**: Bun HTTP + WebSocket server (native `Bun.serve`, not Hono routing)
 - **`packages/shared`**: Zod schemas shared across client/server (`@beatsync/shared`)
 
