@@ -68,6 +68,7 @@ The client mirrors this pattern for server→client messages: an exhaustive regi
 ### Time Synchronization
 
 NTP-inspired protocol for millisecond-accurate cross-device playback:
+
 - Client sends `NTP_REQUEST` with `t0` → server stamps `t1`/`t2` → client receives at `t3`
 - Exponential moving average smoothing (α=0.2) for RTT estimation
 - Minimum 10 measurements before "synced" state
@@ -76,6 +77,7 @@ NTP-inspired protocol for millisecond-accurate cross-device playback:
 ### Audio Pipeline
 
 Three-step upload flow:
+
 1. `POST /upload/get-presigned-url` → server returns an S3/R2 presigned URL or local server upload URL
 2. Client PUTs the file directly to the selected storage endpoint
 3. `POST /upload/complete` → server adds to room's audio sources, broadcasts update
@@ -95,6 +97,7 @@ refresh old tabs; legacy clients interpret an unknown YouTube source as ordinary
 ### Client State Management
 
 Three Zustand stores in `apps/client/src/store/`:
+
 - **`global.tsx`**: Main store (~1500 lines). Audio sources, WebSocket connection, NTP sync state, spatial audio, playback state, volume, search results, stream jobs. Uses LRU buffer cache (max 3 audio buffers).
 - **`room.tsx`**: Room metadata (roomId, username, loading state)
 - **`chat.tsx`**: Chat messages
@@ -104,6 +107,7 @@ HTTP data fetching uses Axios + TanStack React Query. WebSocket message utilitie
 ### Audio Loading Coordination
 
 When play is requested, the server doesn't immediately schedule playback. Instead:
+
 1. Server broadcasts `LOAD_AUDIO_SOURCE` to all clients
 2. Clients download/decode file audio or cue a YouTube iframe at the requested position, then respond with
    `AUDIO_SOURCE_LOADED`

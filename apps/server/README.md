@@ -1,4 +1,5 @@
 To install dependencies:
+
 ```sh
 bun install
 ```
@@ -39,6 +40,7 @@ API key is required. YouTube preparation has a 10-second readiness timeout; play
 prepare the video.
 
 To run:
+
 ```sh
 bun run dev
 ```

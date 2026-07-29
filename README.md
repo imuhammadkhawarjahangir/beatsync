@@ -13,7 +13,6 @@ https://github.com/user-attachments/assets/2aa385a7-2a07-4ab5-80b1-fda553efc57b
 - **Polished interface**: Smooth loading states, status indicators, and all UI elements come built-in
 - **Self-hostable**: Run your own instance with a few commands
 
-
 > [!NOTE]
 > Beatsync is in early development. Mobile support is working, but experimental. Please consider creating an issue or contributing with a PR if you run into problems!
 

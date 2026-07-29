@@ -11,22 +11,26 @@ This document contains implementation details for the Cloudflare R2 integration 
 ## Architecture Changes
 
 ### Before (Filesystem Storage)
+
 ```
 Client → Server (multipart/form-data) → Local filesystem (/uploads/audio/)
 Client ← Server (direct file serving) ← Local filesystem
 ```
+
 - Server handled all file transfers
 - Linear bandwidth scaling with users
 - Single point of failure
 - No CDN distribution
 
 ### After (Cloudflare R2)
+
 ```
 Client → Server (get presigned URL) → R2 API
 Client → R2 (direct upload via presigned URL)
 Client → Server (upload confirmation)
 Client ← R2 Public CDN (direct audio access)
 ```
+
 - Server only coordinates, no file transfers
 - Zero bandwidth costs for audio serving
 - Global CDN distribution
@@ -35,12 +39,14 @@ Client ← R2 Public CDN (direct audio access)
 ## Implementation Details
 
 ### New Server Endpoints
+
 - `POST /api/upload-url` - Generate presigned upload URLs
 - `POST /api/upload-complete` - Confirm successful uploads
 - `POST /audio` - Now redirects to R2 public URLs (was direct file serving)
 - `POST /upload` - Deprecated with helpful error message
 
 ### Key Files Modified
+
 - `apps/server/src/lib/r2.ts` - New R2 utility functions
 - `apps/server/src/routes/upload.ts` - Complete rewrite for presigned URL flow
 - `apps/server/src/routes/audio.ts` - Changed from file serving to R2 redirects
@@ -50,12 +56,14 @@ Client ← R2 Public CDN (direct audio access)
 ### Upload Flow Changes
 
 **Old Flow:**
+
 1. Client creates FormData with audio file
 2. POST to /upload with multipart/form-data
 3. Server saves file to local filesystem
 4. Server broadcasts room update via WebSocket
 
 **New Flow:**
+
 1. Client requests presigned URL from server
 2. Server generates presigned URL via R2 API
 3. Client uploads directly to R2 using presigned URL
@@ -75,6 +83,7 @@ S3_SECRET_ACCESS_KEY=your_secret_access_key
 ```
 
 ### R2 Bucket Structure
+
 ```
 beatsync-audio/
 ├── room-000000/
@@ -84,17 +93,20 @@ beatsync-audio/
 ```
 
 ### Dependencies Added
+
 - `@aws-sdk/client-s3@^3.828.0` - AWS SDK v3 (R2 compatible)
 
 ## Cost Analysis
 
 ### Before (Server Bandwidth)
+
 - **Upload:** 5MB file = 5MB server bandwidth
 - **Distribution:** 5MB × 9 users = 45MB server bandwidth
 - **Total per file:** 50MB server bandwidth
 - **Monthly cost:** Linear scaling with usage
 
 ### After (R2 + CDN)
+
 - **Upload:** Direct to R2, zero server bandwidth
 - **Distribution:** R2 CDN, zero egress costs
 - **Storage:** ~$0.015 per GB/month
@@ -111,11 +123,13 @@ beatsync-audio/
 ## Testing Considerations
 
 ### Local Development
+
 - Requires valid R2 credentials even in development
 - Alternative: Mock R2 responses for local testing
 - File uploads will go to production R2 bucket
 
 ### Production Validation
+
 - Verify R2 bucket public access is configured
 - Test upload flow end-to-end
 - Monitor R2 usage and costs
@@ -132,12 +146,14 @@ beatsync-audio/
 ## Future Enhancements
 
 ### Potential Optimizations
+
 - Server-side audio transcoding for bandwidth optimization
 - Chunked/resumable uploads for large files
 - File compression before R2 upload
 - Automatic cleanup of old room files
 
 ### Monitoring
+
 - R2 usage metrics integration
 - Upload success/failure tracking
 - CDN performance monitoring
@@ -153,15 +169,17 @@ beatsync-audio/
 ## Performance Impact
 
 ### Improvements
+
 - **Global latency:** R2 CDN reduces audio loading times worldwide
 - **Server resources:** Eliminated file I/O operations
 - **Scalability:** No longer limited by server storage/bandwidth
 
 ### Considerations
+
 - Additional network round-trip for presigned URL generation
 - Dependency on Cloudflare infrastructure
 - Requires internet connectivity for all audio operations
 
 ---
 
-*This migration was implemented to address bandwidth cost scaling issues on Render while improving global performance and reliability.*
+_This migration was implemented to address bandwidth cost scaling issues on Render while improving global performance and reliability._
