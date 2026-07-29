@@ -144,7 +144,6 @@ export async function serveLocalAudio(roomId: string, fileName: string): Promise
     headers: {
       "Content-Type": file.type || "audio/mpeg",
       "Accept-Ranges": "bytes",
-      "Access-Control-Allow-Origin": "*",
     },
   });
 }

@@ -44,7 +44,6 @@ export const handleGetAudio = async (req: Request, _server: BunServer) => {
       status: 302,
       headers: {
         Location: publicUrl,
-        "Access-Control-Allow-Origin": "*",
       },
     });
   } catch (error) {

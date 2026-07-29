@@ -11,7 +11,7 @@ import { handleGetPresignedURL, handleUploadComplete } from "@/routes/upload";
 import { serveLocalAudio, storeLocalUpload } from "@/lib/r2";
 import { handleWebSocketUpgrade } from "@/routes/websocket";
 import { handleClose, handleMessage, handleOpen } from "@/routes/websocketHandlers";
-import { corsHeaders, errorResponse } from "@/utils/responses";
+import { applyCorsHeaders, corsPolicy, errorResponse } from "@/utils/responses";
 import type { WSData } from "@/utils/websocket";
 
 // Bun.serve with WebSocket support
@@ -21,10 +21,19 @@ const server = Bun.serve<WSData>({
   async fetch(req, server) {
     const start = performance.now();
     const url = new URL(req.url);
+    const requestOrigin = req.headers.get("origin");
+
+    if (!corsPolicy.isOriginAllowed(requestOrigin)) {
+      console.warn(`Rejected ${req.method} ${url.pathname} from disallowed origin: ${requestOrigin}`);
+      return new Response("Origin not allowed", {
+        status: 403,
+        headers: { Vary: "Origin" },
+      });
+    }
 
     // Handle CORS preflight requests
     if (req.method === "OPTIONS") {
-      return new Response(null, { headers: corsHeaders });
+      return new Response(null, { headers: corsPolicy.getHeaders(requestOrigin) });
     }
 
     let response: Response;
@@ -39,7 +48,7 @@ const server = Bun.serve<WSData>({
           response = errorResponse("Invalid local upload path", 400);
         } else {
           await storeLocalUpload(decodeURIComponent(roomId), decodeURIComponent(fileName), req);
-          response = new Response(null, { status: 204, headers: corsHeaders });
+          response = new Response(null, { status: 204 });
         }
       } else if (url.pathname.startsWith("/audio/local/") && req.method === "GET") {
         const [, , , roomSegment, fileName] = url.pathname.split("/");
@@ -54,8 +63,10 @@ const server = Bun.serve<WSData>({
             response = handleRoot(req);
             break;
 
-          case "/ws":
-            return handleWebSocketUpgrade(req, server);
+          case "/ws": {
+            const upgradeResponse = handleWebSocketUpgrade(req, server);
+            return upgradeResponse ? applyCorsHeaders(upgradeResponse, requestOrigin) : undefined;
+          }
 
           case "/upload/get-presigned-url":
             if (IS_DEMO_MODE) {
@@ -104,13 +115,13 @@ const server = Bun.serve<WSData>({
         `[${new Date().toISOString()}] ${req.method} ${url.pathname} 500 ${durationMs}ms - Unhandled error:`,
         error
       );
-      return errorResponse("Internal server error", 500);
+      return applyCorsHeaders(errorResponse("Internal server error", 500), requestOrigin);
     }
 
     const durationMs = (performance.now() - start).toFixed(1);
     console.log(`[${new Date().toISOString()}] ${req.method} ${url.pathname} ${response.status} ${durationMs}ms`);
 
-    return response;
+    return applyCorsHeaders(response, requestOrigin);
   },
 
   websocket: {
