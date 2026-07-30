@@ -1,7 +1,7 @@
 import { YouTubePlayer } from "@/components/room/YouTubePlayer";
 import { youtubePlayerController } from "@/lib/youtubePlayer";
 import { useGlobalStore } from "@/store/global";
-import { act, cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 
 interface PlayerEvents {
@@ -107,12 +107,14 @@ describe("YouTubePlayer room controls", () => {
     broadcastPause = mock(() => undefined),
     broadcastPlay = mock(() => undefined),
     canMutate = true,
+    enablePlayback = true,
     socket = null,
   }: {
     expectedPlaying: boolean;
     broadcastPause?: ReturnType<typeof mock>;
     broadcastPlay?: ReturnType<typeof mock>;
     canMutate?: boolean;
+    enablePlayback?: boolean;
     socket?: WebSocket | null;
   }) => {
     useGlobalStore.setState({
@@ -143,6 +145,13 @@ describe("YouTubePlayer room controls", () => {
     const player = FakeYouTubePlayer.latest;
     if (!player) throw new Error("Expected the fake YouTube player");
 
+    if (enablePlayback) {
+      await act(async () => {
+        youtubePlayerController.enablePlayback();
+      });
+      player.calls = [];
+    }
+
     let cue!: Promise<void>;
     await act(async () => {
       cue = youtubePlayerController.cue(VIDEO_ID);
@@ -158,6 +167,31 @@ describe("YouTubePlayer room controls", () => {
 
     return { broadcastPause, broadcastPlay, player };
   };
+
+  it("requires Enable playback before joining synchronized playback", async () => {
+    const send = mock((payload: string) => payload);
+    const socket = {
+      readyState: WebSocket.OPEN,
+      send,
+    } as unknown as WebSocket;
+    const { player } = await renderPreparedPlayer({
+      enablePlayback: false,
+      expectedPlaying: true,
+      socket,
+    });
+    player.calls = [];
+
+    expect(await youtubePlayerController.schedulePlay(VIDEO_ID, 0, 0)).toBe("requires-user-activation");
+    await new Promise((resolve) => setTimeout(resolve, 1));
+    expect(player.calls.some((call) => call.method === "seek")).toBe(false);
+    expect(player.calls.some((call) => call.method === "play")).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Enable playback" }));
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(send.mock.calls[0]?.[0]))).toEqual({ type: "SYNC" });
+    expect(screen.queryByRole("button", { name: "Enable playback" })).toBeNull();
+  });
 
   it("broadcasts one room pause for an authorized iframe pause", async () => {
     const broadcastPause = mock(() => undefined);

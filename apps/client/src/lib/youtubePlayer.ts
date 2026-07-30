@@ -67,6 +67,7 @@ export interface YouTubePlayerSnapshot {
   duration: number;
   errorCode?: number;
   isReady: boolean;
+  playbackEnabled: boolean;
   state: YouTubePlayerState;
   stateChangeOrigin: "interactive" | "programmatic" | null;
   stateChangeSequence: number;
@@ -75,6 +76,7 @@ export interface YouTubePlayerSnapshot {
 
 type SnapshotListener = (snapshot: YouTubePlayerSnapshot) => void;
 type ProgrammaticIntentKind = "cue" | "drift" | "pause" | "play" | "unlock";
+export type YouTubePlayScheduleResult = "requires-user-activation" | "scheduled";
 
 interface ProgrammaticStateIntent {
   allowedStates: ReadonlySet<YouTubePlayerState>;
@@ -200,6 +202,7 @@ export class YouTubePlayerController {
     autoplayBlocked: false,
     duration: 0,
     isReady: false,
+    playbackEnabled: false,
     state: -1,
     stateChangeOrigin: null,
     stateChangeSequence: 0,
@@ -255,7 +258,11 @@ export class YouTubePlayerController {
         },
         events: {
           onAutoplayBlocked: () => {
-            this.snapshot = { ...this.snapshot, autoplayBlocked: true };
+            this.snapshot = {
+              ...this.snapshot,
+              autoplayBlocked: true,
+              playbackEnabled: false,
+            };
             this.emit();
           },
           onReady: () => {
@@ -271,6 +278,18 @@ export class YouTubePlayerController {
             if (this.snapshot.videoId && eventVideoId && eventVideoId !== this.snapshot.videoId) return;
 
             const state = event.data as YouTubePlayerState;
+            if (state === api.PlayerState.PLAYING && !this.snapshot.playbackEnabled) {
+              this.resolvePendingCue(eventVideoId);
+              this.beginProgrammaticIntent(
+                "pause",
+                [api.PlayerState.PLAYING, api.PlayerState.PAUSED, api.PlayerState.BUFFERING],
+                api.PlayerState.PAUSED,
+                eventVideoId
+              );
+              this.player?.pauseVideo();
+              return;
+            }
+
             const classification = this.classifyStateChange(state, eventVideoId);
             this.snapshot = {
               ...this.snapshot,
@@ -375,13 +394,21 @@ export class YouTubePlayerController {
     return promise;
   }
 
-  async schedulePlay(videoId: string, trackTimeSeconds: number, delaySeconds: number): Promise<void> {
+  async schedulePlay(
+    videoId: string,
+    trackTimeSeconds: number,
+    delaySeconds: number
+  ): Promise<YouTubePlayScheduleResult> {
     await this.cue(videoId, trackTimeSeconds);
-    if (!this.player) return;
+    if (!this.player || !this.snapshot.playbackEnabled) return "requires-user-activation";
 
     this.clearScheduledAction();
     this.scheduledActionTimer = setTimeout(
       () => {
+        if (!this.snapshot.playbackEnabled) {
+          this.scheduledActionTimer = null;
+          return;
+        }
         this.beginProgrammaticIntent("play", [-1, 2, 3, 5, 1], 1, videoId);
         this.player?.seekTo(Math.max(0, trackTimeSeconds), true);
         this.player?.playVideo();
@@ -389,6 +416,7 @@ export class YouTubePlayerController {
       },
       Math.max(0, delaySeconds * 1000)
     );
+    return "scheduled";
   }
 
   schedulePause(delaySeconds: number, trackTimeSeconds?: number, onPaused?: () => void): void {
@@ -414,13 +442,20 @@ export class YouTubePlayerController {
     this.player?.pauseVideo();
   }
 
-  unlock(): void {
-    if (!this.player) return;
+  enablePlayback(): boolean {
+    if (!this.player) return false;
+    this.snapshot = {
+      ...this.snapshot,
+      autoplayBlocked: false,
+      playbackEnabled: true,
+    };
+    this.emit();
     this.player.mute();
     this.beginProgrammaticIntent("unlock", [-1, 1, 2, 3, 5], 2);
     this.player.playVideo();
     this.player.pauseVideo();
     this.player.unMute();
+    return true;
   }
 
   getCurrentTime(): number {
@@ -464,6 +499,7 @@ export class YouTubePlayerController {
       autoplayBlocked: false,
       duration: 0,
       isReady: false,
+      playbackEnabled: false,
       state: -1,
       stateChangeOrigin: null,
       stateChangeSequence: 0,

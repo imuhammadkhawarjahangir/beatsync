@@ -13,6 +13,7 @@ const INITIAL_SNAPSHOT: YouTubePlayerSnapshot = {
   autoplayBlocked: false,
   duration: 0,
   isReady: false,
+  playbackEnabled: false,
   state: -1,
   stateChangeOrigin: null,
   stateChangeSequence: 0,
@@ -32,7 +33,6 @@ export const YouTubePlayer = () => {
   const isInitingSystem = useGlobalStore((state) => state.isInitingSystem);
   const canMutate = useCanMutate();
   const [snapshot, setSnapshot] = useState(INITIAL_SNAPSHOT);
-  const [playbackEnabled, setPlaybackEnabled] = useState(false);
   const lastSyncRequestAtRef = useRef(Number.NEGATIVE_INFINITY);
   const pendingInteractiveActionRef = useRef<PendingInteractiveAction | null>(null);
 
@@ -247,7 +247,7 @@ export const YouTubePlayer = () => {
   }, [youtubeSource]);
 
   const shouldShow = Boolean(youtubeSource) && !isInitingSystem;
-  const needsPlaybackPermission = !playbackEnabled || snapshot.autoplayBlocked;
+  const needsPlaybackPermission = !snapshot.playbackEnabled || snapshot.autoplayBlocked;
 
   return (
     <section
@@ -266,9 +266,7 @@ export const YouTubePlayer = () => {
               className="rounded-md bg-white px-3 py-1.5 font-medium text-black transition-colors hover:bg-neutral-200 disabled:opacity-50"
               disabled={!snapshot.isReady || !youtubeSource}
               onClick={() => {
-                youtubePlayerController.unlock();
-                setPlaybackEnabled(true);
-                requestRoomSync();
+                if (youtubePlayerController.enablePlayback()) requestRoomSync();
               }}
             >
               Enable playback
@@ -276,13 +274,13 @@ export const YouTubePlayer = () => {
           )}
         </div>
         <div className="aspect-video min-h-[200px] overflow-hidden rounded-lg bg-black">
-          <div className="h-full w-full">
+          <div className={cn("h-full w-full", needsPlaybackPermission && "pointer-events-none")}>
             <div ref={hostRef} className="h-full w-full" />
           </div>
         </div>
         {needsPlaybackPermission && (
           <p className="mt-2 text-xs text-neutral-500">
-            Each device may need one click before the browser permits synchronized YouTube playback.
+            Click Enable playback once on each device before synchronized YouTube playback can begin.
           </p>
         )}
         <p className="mt-2 text-[11px] text-neutral-600">

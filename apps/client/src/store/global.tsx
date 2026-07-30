@@ -876,11 +876,15 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
             0,
             (epochNow() + latestState.offsetEstimate + latestState.nudgeOffsetMs - data.targetServerTime) / 1000
           );
-          await youtubePlayerController.schedulePlay(
+          const scheduleResult = await youtubePlayerController.schedulePlay(
             youtubeSource.videoId,
             data.trackTimeSeconds + elapsedAfterTargetSeconds,
             refreshedWaitSeconds
           );
+          if (scheduleGeneration !== youtubePlaybackGeneration) return;
+          if (scheduleResult === "requires-user-activation") {
+            set({ isPlaying: false });
+          }
         })().catch((error) => {
           if (scheduleGeneration !== youtubePlaybackGeneration) return;
           console.error("Failed to schedule YouTube playback:", error);

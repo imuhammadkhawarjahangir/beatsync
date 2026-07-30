@@ -80,6 +80,11 @@ describe("YouTubePlayerController", () => {
   let controller: YouTubePlayerController;
   let player: FakeYouTubePlayer;
 
+  const enablePlayback = () => {
+    expect(controller.enablePlayback()).toBe(true);
+    player.calls = [];
+  };
+
   beforeEach(async () => {
     FakeYouTubePlayer.instances = [];
     controller = new YouTubePlayerController();
@@ -137,6 +142,7 @@ describe("YouTubePlayerController", () => {
       });
     });
 
+    enablePlayback();
     const cue = controller.cue("dQw4w9WgXcQ");
     await Promise.resolve();
     player.emitState(2);
@@ -154,12 +160,76 @@ describe("YouTubePlayerController", () => {
     unsubscribe();
   });
 
+  it("does not play a scheduled video before playback is explicitly enabled", async () => {
+    const cue = controller.cue("dQw4w9WgXcQ", 12.5);
+    await Promise.resolve();
+    player.emitState(5);
+    await cue;
+    player.calls = [];
+
+    expect(await controller.schedulePlay("dQw4w9WgXcQ", 12.5, 0)).toBe("requires-user-activation");
+    await new Promise((resolve) => setTimeout(resolve, 1));
+
+    expect(player.calls.some((call) => call.method === "seek")).toBe(false);
+    expect(player.calls.some((call) => call.method === "play")).toBe(false);
+
+    enablePlayback();
+    expect(await controller.schedulePlay("dQw4w9WgXcQ", 12.5, 0)).toBe("scheduled");
+    await new Promise((resolve) => setTimeout(resolve, 1));
+
+    expect(player.calls).toContainEqual({ method: "seek", value: 12.5 });
+    expect(player.calls.some((call) => call.method === "play")).toBe(true);
+  });
+
+  it("immediately pauses an unexpected playing event while playback is disabled", async () => {
+    const states: number[] = [];
+    const unsubscribe = controller.subscribe((snapshot) => {
+      states.push(snapshot.state);
+    });
+    const cue = controller.cue("dQw4w9WgXcQ");
+    await Promise.resolve();
+    player.emitState(5);
+    await cue;
+    player.calls = [];
+
+    player.emitState(1);
+
+    expect(player.calls).toContainEqual({ method: "pause" });
+    expect(states.at(-1)).toBe(5);
+    unsubscribe();
+  });
+
+  it("requires playback to be enabled again after an autoplay block", async () => {
+    const snapshots: Array<{ autoplayBlocked: boolean; playbackEnabled: boolean }> = [];
+    const unsubscribe = controller.subscribe((snapshot) => {
+      snapshots.push({
+        autoplayBlocked: snapshot.autoplayBlocked,
+        playbackEnabled: snapshot.playbackEnabled,
+      });
+    });
+
+    const cue = controller.cue("dQw4w9WgXcQ");
+    await Promise.resolve();
+    player.emitState(5);
+    await cue;
+    enablePlayback();
+    player.events.onAutoplayBlocked();
+
+    expect(snapshots.at(-1)).toEqual({
+      autoplayBlocked: true,
+      playbackEnabled: false,
+    });
+    expect(await controller.schedulePlay("dQw4w9WgXcQ", 0, 0)).toBe("requires-user-activation");
+    unsubscribe();
+  });
+
   it("does not seek or play before the scheduled delay", async () => {
     const cue = controller.cue("dQw4w9WgXcQ", 12.5);
     await Promise.resolve();
     player.emitState(5);
     await cue;
 
+    enablePlayback();
     await controller.schedulePlay("dQw4w9WgXcQ", 12.5, 0.02);
     expect(player.calls.some((call) => call.method === "seek")).toBe(false);
     expect(player.calls.some((call) => call.method === "play")).toBe(false);
@@ -167,6 +237,21 @@ describe("YouTubePlayerController", () => {
     await new Promise((resolve) => setTimeout(resolve, 30));
     expect(player.calls).toContainEqual({ method: "seek", value: 12.5 });
     expect(player.calls.some((call) => call.method === "play")).toBe(true);
+  });
+
+  it("rechecks playback permission when a scheduled play becomes due", async () => {
+    const cue = controller.cue("dQw4w9WgXcQ");
+    await Promise.resolve();
+    player.emitState(5);
+    await cue;
+
+    enablePlayback();
+    expect(await controller.schedulePlay("dQw4w9WgXcQ", 0, 0.02)).toBe("scheduled");
+    player.events.onAutoplayBlocked();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    expect(player.calls.some((call) => call.method === "seek")).toBe(false);
+    expect(player.calls.some((call) => call.method === "play")).toBe(false);
   });
 
   it("labels scheduled play and pause transitions as programmatic", async () => {
@@ -180,6 +265,7 @@ describe("YouTubePlayerController", () => {
     player.emitState(5);
     await cue;
 
+    enablePlayback();
     await controller.schedulePlay("dQw4w9WgXcQ", 8, 0);
     await new Promise((resolve) => setTimeout(resolve, 1));
     player.emitState(3);
@@ -213,6 +299,7 @@ describe("YouTubePlayerController", () => {
     player.emitState(5);
     await cue;
 
+    enablePlayback();
     await controller.schedulePlay("dQw4w9WgXcQ", 0, 0);
     await new Promise((resolve) => setTimeout(resolve, 1));
     controller.schedulePause(0, 0);
@@ -236,6 +323,7 @@ describe("YouTubePlayerController", () => {
     player.emitState(5);
     await cue;
 
+    enablePlayback();
     await controller.schedulePlay("dQw4w9WgXcQ", 0, 0);
     await new Promise((resolve) => setTimeout(resolve, 1));
     controller.schedulePause(0, 0);
@@ -261,6 +349,7 @@ describe("YouTubePlayerController", () => {
     player.emitState(5);
     await cue;
 
+    enablePlayback();
     controller.schedulePause(0, 0);
     await new Promise((resolve) => setTimeout(resolve, 1));
     await controller.schedulePlay("dQw4w9WgXcQ", 0, 0);
@@ -291,6 +380,7 @@ describe("YouTubePlayerController", () => {
       player.emitState(5);
       await cue;
 
+      enablePlayback();
       await controller.schedulePlay("dQw4w9WgXcQ", 0, 0);
       await new Promise((resolve) => setTimeout(resolve, 1));
       player.emitState(1);
